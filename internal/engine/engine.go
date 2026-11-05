@@ -31,6 +31,8 @@ type Executor interface {
 	// pressed) still are; "" skips that check. It returns ErrSkipped when
 	// the check fails.
 	Shortcut(combo, app, program string) error
+	// HoldShortcut presses (down) or releases a shortcut held with a pad key.
+	HoldShortcut(combo, app, program string, down bool) error
 	// Shell runs cmd; it waits for it (keeping effects in order) unless detach.
 	Shell(cmd string, detach bool) error
 }
@@ -237,7 +239,7 @@ func (e *Engine) keyDown(name string, now time.Time) {
 		s.binding, s.app, s.program = b, e.app, e.program
 	}
 	s.down, s.downAt, s.holdFired = true, now, false
-	s.press = &keyPress{hasDown: s.binding.Gesture("down") != nil}
+	s.press = &keyPress{hasDown: gestureAction(s.binding, "down") != nil}
 	e.fire(name, "down", s)
 	if s.binding.Gesture("hold") == nil && s.binding.Gesture("double") == nil {
 		e.fire(name, "press", s)
@@ -390,8 +392,20 @@ func (e *Engine) fireNow(name string, b *config.KeyBinding) {
 	e.fire(name, "press", &keyState{binding: b, app: e.app, program: e.program})
 }
 
+// gestureAction is what a gesture does. A held shortcut is its key's down and
+// up and nothing else.
+func gestureAction(b *config.KeyBinding, gesture string) *config.Action {
+	if h := b.HeldShortcut(); h != nil {
+		if gesture == "down" || gesture == "up" {
+			return h
+		}
+		return nil
+	}
+	return b.Gesture(gesture)
+}
+
 func (e *Engine) fire(name, gesture string, s *keyState) {
-	a := s.binding.Gesture(gesture)
+	a := gestureAction(s.binding, gesture)
 	if a == nil {
 		return
 	}
@@ -431,10 +445,16 @@ func (e *Engine) do(name string, a *config.Action) {
 		e.effect(name, func() error { return e.exec.SendText(block, text) })
 	case "shortcut":
 		combo, app, program := a.Shortcut, e.cur.app, e.cur.program
-		if d := e.cur.binding.Gesture("down"); e.gesture == "up" && d != nil && d.Shortcut == combo {
-			// The second tap of a toggle whose first tap ran: always send it,
-			// or the toggle stays on. Any other up keeps the focus check.
+		if d := gestureAction(e.cur.binding, "down"); e.gesture == "up" && d != nil && d.Shortcut == combo {
+			// The second tap of a toggle, or the release of a held key, whose
+			// down ran: always send it, or the toggle or key stays on. Any
+			// other up keeps the focus check.
 			app, program = "", ""
+		}
+		if a.Held {
+			down := e.gesture == "down"
+			e.effect(name, func() error { return e.exec.HoldShortcut(combo, app, program, down) })
+			break
 		}
 		e.effect(name, func() error { return e.exec.Shortcut(combo, app, program) })
 	case "rex":
@@ -600,6 +620,9 @@ func Summary(a *config.Action) string {
 	case "shell":
 		return "shell " + a.Shell
 	case "shortcut":
+		if a.Held {
+			return "shortcut " + a.Shortcut + " (held)"
+		}
 		return "shortcut " + a.Shortcut
 	}
 	return "?"

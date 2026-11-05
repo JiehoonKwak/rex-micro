@@ -44,6 +44,11 @@ func (r *recorder) Shortcut(c, app, program string) error {
 	return nil
 }
 
+func (r *recorder) HoldShortcut(c, app, program string, down bool) error {
+	r.calls, r.ctx = append(r.calls, fmt.Sprintf("hold %s down=%v", c, down)), app+"/"+program
+	return nil
+}
+
 func setup(t *testing.T, extra string) (*Engine, *recorder) {
 	t.Helper()
 	cfg, err := config.Parse(extra)
@@ -518,5 +523,21 @@ func TestReleaseRunsBesideADownStillRunning(t *testing.T) {
 	<-done
 	if !strings.Contains(strings.Join(b.calls, ","), "shell mic-off") {
 		t.Fatalf("calls %q", b.calls)
+	}
+}
+
+func TestHeldShortcutFollowsThePadKey(t *testing.T) {
+	e, r := setup(t, "[[layer]]\nname = \"base\"\n[layer.keys]\nMIC = { shortcut = \"right_option\", held = true }\n")
+	e.SetContext("Rex", "zsh")
+	micDown(e)
+	want(t, r, "hold right_option down=true")
+	if r.ctx != "Rex/zsh" {
+		t.Fatalf("press ctx = %q", r.ctx)
+	}
+	e.SetContext("Google Chrome", "")
+	micUp(e)
+	want(t, r, "hold right_option down=false")
+	if r.ctx != "/" {
+		t.Fatalf("release ctx = %q; a held key must always be let go", r.ctx)
 	}
 }

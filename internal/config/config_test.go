@@ -76,6 +76,9 @@ func TestRejects(t *testing.T) {
 		"nan brightness":    {"[lighting]\nbrightness = nan\n", "lighting.brightness"},
 		"text target":       {base + "ACT06 = { text = \"x\", target = \"focused\" }\n", "text always goes"},
 		"stick gesture":     {base + "STICK_UP = { down = { shell = \"a\" }, up = { shell = \"b\" } }\n", "only has press"},
+		"held with hold":    {base + "ACT06 = { press = { shortcut = \"fn\", held = true }, hold = { key = \"a\" } }\n", "held shortcut is the whole binding"},
+		"held stick":        {base + "STICK_UP = { shortcut = \"fn\", held = true }\n", "never held down"},
+		"held key":          {base + "ACT06 = { key = \"a\", held = true }\n", "held only applies to shortcut"},
 		"dial gesture":      {base + "ENC_CW = { hold = { shell = \"a\" } }\n", "only has press"},
 	}
 	for name, tc := range cases {

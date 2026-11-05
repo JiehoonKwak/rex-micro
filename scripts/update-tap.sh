@@ -4,7 +4,11 @@ version=${1:?usage: update-tap.sh VERSION}
 root=$(cd "$(dirname "$0")/.." && pwd)
 sha=$(awk '{print $1}' "$root/dist/checksums.txt")
 tmp=$(mktemp -d)
-git clone --depth 1 "https://x-access-token:${TAP_TOKEN:?}@github.com/JiehoonKwak/homebrew-tap.git" "$tmp/tap"
+key=$tmp/deploy_key
+printf '%s\n' "${TAP_DEPLOY_KEY:?}" > "$key"
+chmod 600 "$key"
+export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+git clone --depth 1 git@github.com:JiehoonKwak/homebrew-tap.git "$tmp/tap"
 mkdir -p "$tmp/tap/Formula"
 sed -e "s/@VERSION@/$version/g" -e "s/@SHA256@/$sha/g" "$root/packaging/homebrew/rex-micro.rb" > "$tmp/tap/Formula/rex-micro.rb"
 cd "$tmp/tap"

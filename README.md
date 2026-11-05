@@ -109,8 +109,9 @@ name = "agents"
 color = "#8B5CF6"
 
 [layer.keys]
-# A dictation app on a toggle hotkey: tap it on press and on release.
-MIC = { down = { shortcut = "right_option" }, up = { shortcut = "right_option" } }
+# A dictation app on a modifier hotkey: hold it as long as MIC is held, so the
+# app tells a tap (toggle) from a hold (push-to-talk) itself.
+MIC = { shortcut = "right_option", held = true }
 # One with start/stop URLs instead:
 # MIC = { down = { shell = "open -g 'myapp://dictation/start'" }, up = { shell = "open -g 'myapp://dictation/stop'" } }
 
@@ -140,7 +141,7 @@ Each binding does exactly one thing:
 | --- | --- |
 | `{ action = "pane.zoom" }` | Run a Rex action. `rex-micro actions` lists them, including your own `rex.action` definitions from `init.lua`. |
 | `{ key = "enter" }` | Send key presses to the focused pane. Add `target = "agent"` to send them to the selected agent instead. |
-| `{ shortcut = "cmd+shift+]" }` | Press a keyboard shortcut in the app in front. A lone modifier (`fn`, `right_option`, `right_cmd`, ...) taps just that key, the hotkey many dictation apps use. Needs Accessibility for rex-micro. |
+| `{ shortcut = "cmd+shift+]" }` | Press a keyboard shortcut in the app in front. A lone modifier (`fn`, `right_option`, `right_cmd`, ...) taps just that key, the hotkey many dictation apps use. Add `held = true` to keep it pressed while the pad key is. Needs Accessibility for rex-micro. |
 | `{ text = "continue" }` | Type text into the selected agent pane |
 | `{ rex = ["run", "--", "htop"] }` | Run the `rex` CLI with these arguments |
 | `{ shell = "..." }` | Run a shell command |

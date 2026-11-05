@@ -2,6 +2,9 @@ package rex
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -18,5 +21,16 @@ func TestSnapshotParses(t *testing.T) {
 	empty := &Client{Runner: stub{"{}\n"}}
 	if p, err := empty.Snapshot(); err != nil || len(p) != 0 {
 		t.Fatalf("empty: %v %v", p, err)
+	}
+}
+
+func TestExecRunnerNeverStartsAServer(t *testing.T) {
+	fake := filepath.Join(t.TempDir(), "rex")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho \"$@\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ExecRunner{Path: fake}.Run(context.Background(), nil, "session", "list")
+	if err != nil || strings.TrimSpace(string(out)) != "--autostart=false session list" {
+		t.Fatalf("%q %v", out, err)
 	}
 }

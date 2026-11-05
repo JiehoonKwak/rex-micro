@@ -134,7 +134,9 @@ type Options struct {
 	// Shortcut sends a key combination; nil posts it through macOS. Trusted
 	// reports Accessibility for it; nil asks macOS.
 	Shortcut func(macos.Shortcut) error
-	Trusted  func() bool
+	// HoldShortcut presses or releases a held shortcut; nil asks macOS.
+	HoldShortcut func(macos.Shortcut, bool) error
+	Trusted      func() bool
 	// FreshTrusted asks a new process whether Accessibility is granted.
 	// macOS does not tell a running process about a grant, so the daemon
 	// restarts when a fresh check succeeds. Nil runs `rex-micro _trusted`.
@@ -183,6 +185,9 @@ func Start(opts Options) error {
 	if opts.Shortcut == nil {
 		opts.Shortcut = macos.Post
 	}
+	if opts.HoldShortcut == nil {
+		opts.HoldShortcut = macos.PostHeld
+	}
 	requestTrust := func() {} // tests supply Trusted and never see a prompt
 	if opts.Trusted == nil {
 		opts.Trusted, requestTrust = macos.Trusted, func() { macos.RequestTrust() }
@@ -216,7 +221,7 @@ func Start(opts Options) error {
 		}
 		return ""
 	}
-	d.eng = engine.New(cfg, executor{d.rex, opts.Shortcut, opts.FrontApp, program, logger}, d.enqueue, logger.Printf)
+	d.eng = engine.New(cfg, executor{rex: d.rex, post: opts.Shortcut, hold: opts.HoldShortcut, front: opts.FrontApp, program: program, logger: logger}, d.enqueue, logger.Printf)
 	d.eng.OnLayer = func(int) { d.render(true) }
 	d.askTrust(logger)
 	go d.runEffects()

@@ -60,7 +60,8 @@ hold = "500ms"
 #   { key = "enter" }  { key = ["ctrl+c"] }      key presses to the focused pane
 #   { key = "y", target = "agent" }              ...or to the selected agent pane
 #   { shortcut = "cmd+shift+]" }                 a shortcut in the app in front (needs Accessibility);
-#   { shortcut = "right_option" }                a lone modifier taps that key (dictation hotkeys)
+#   { shortcut = "right_option" }                a lone modifier taps that key (dictation hotkeys);
+#   { shortcut = "right_option", held = true }   ...or keeps it down while the pad key is
 #   { text = "continue" }                        type text into the selected agent pane
 #   { rex = ["run", "--", "lazygit"] }           any rex CLI arguments
 #   { shell = "open -a Typeless" }               a shell command; effects run in order, so it

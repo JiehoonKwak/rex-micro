@@ -87,6 +87,9 @@ func (a *Action) TOML() string {
 	if a.Shortcut != "" {
 		f = append(f, "shortcut = "+Quote(a.Shortcut))
 	}
+	if a.Held {
+		f = append(f, "held = true")
+	}
 	if a.Text != "" {
 		f = append(f, "text = "+Quote(a.Text))
 	}

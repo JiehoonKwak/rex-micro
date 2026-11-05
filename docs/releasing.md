@@ -10,5 +10,5 @@
   otherwise.
 - `scripts/update-tap.sh VERSION`: renders `packaging/homebrew/rex-micro.rb`
   from `dist/checksums.txt` and pushes it to `JiehoonKwak/homebrew-tap`; needs
-  `TAP_TOKEN`.
+  `TAP_DEPLOY_KEY`, the private half of a write deploy key on the tap.
 - Pushing a `v*` tag runs all of this in `.github/workflows/release.yml`.

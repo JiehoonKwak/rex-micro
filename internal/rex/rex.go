@@ -27,7 +27,8 @@ type Runner interface {
 	Run(ctx context.Context, stdin []byte, args ...string) ([]byte, error)
 }
 
-// ExecRunner runs a real rex binary.
+// ExecRunner runs a real rex binary. It never starts a Rex server: the
+// daemon only reads and drives a Rex that is already running.
 type ExecRunner struct{ Path string }
 
 func (r ExecRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]byte, error) {
@@ -35,7 +36,7 @@ func (r ExecRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]by
 	if path == "" {
 		path = "rex"
 	}
-	cmd := exec.CommandContext(ctx, path, args...)
+	cmd := exec.CommandContext(ctx, path, append([]string{"--autostart=false"}, args...)...)
 	if stdin != nil {
 		cmd.Stdin = bytes.NewReader(stdin)
 	}

@@ -39,7 +39,7 @@ A binding does exactly one thing:
 | `{ action = "pane.zoom" }` | a Rex action; add `args = { direction = "right" }` when it takes arguments |
 | `{ key = "enter" }`, `{ key = ["ctrl+c"] }` | key presses to the pane focused in the Rex app |
 | `{ key = "y", target = "agent" }` | key presses to the selected agent pane (last one shown with an Agent Key, else the most urgent) |
-| `{ shortcut = "cmd+shift+]" }` | a keyboard shortcut in the app in front (names the key, so `]` with shift); a lone modifier such as `fn` or `right_option` taps that key alone; needs Accessibility |
+| `{ shortcut = "cmd+shift+]" }` | a keyboard shortcut in the app in front (names the key, so `]` with shift); a lone modifier such as `fn` or `right_option` taps that key alone; `held = true` keeps it down while the pad key is (tap-to-toggle, hold-to-talk dictation); needs Accessibility |
 | `{ text = "continue" }` | types text into the selected agent pane |
 | `{ rex = ["run", "--", "lazygit"] }` | any `rex` CLI arguments |
 | `{ shell = "open -a Typeless" }` | a shell command; effects run in order, so it waits up to 10s; add `detach = true` for long ones |

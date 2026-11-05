@@ -37,6 +37,22 @@ static void post_modifier(CGKeyCode code, CGEventFlags flags) {
 	if (src) CFRelease(src);
 }
 
+// post_phase presses (down) or releases one key with its modifiers held. A
+// modifier key alone is a flags-changed event; its release clears the flags.
+static void post_phase(CGKeyCode code, CGEventFlags flags, int modifier, int down) {
+	CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStatePrivate);
+	CGEventRef ev = CGEventCreateKeyboardEvent(src, code, down);
+	if (modifier) {
+		CGEventSetType(ev, kCGEventFlagsChanged);
+		CGEventSetFlags(ev, (down ? flags : 0) | kCGEventFlagMaskNonCoalesced);
+	} else {
+		CGEventSetFlags(ev, flags);
+	}
+	CGEventPost(kCGHIDEventTap, ev);
+	CFRelease(ev);
+	if (src) CFRelease(src);
+}
+
 static int trusted(int prompt) {
 	if (!prompt) return AXIsProcessTrusted();
 	const void *keys[] = { kAXTrustedCheckOptionPrompt };
@@ -179,6 +195,23 @@ func RequestTrust() bool { return C.trusted(1) != 0 }
 
 // ErrNotTrusted means Accessibility has not been granted.
 var ErrNotTrusted = errors.New("rex-micro needs Accessibility to send shortcuts: System Settings > Privacy & Security > Accessibility")
+
+// PostHeld presses (down) or releases the shortcut, for a key held as long
+// as the pad key is.
+func PostHeld(sc Shortcut, down bool) error {
+	if !Trusted() {
+		return ErrNotTrusted
+	}
+	mod, d := 0, 0
+	if sc.Modifier {
+		mod = 1
+	}
+	if down {
+		d = 1
+	}
+	C.post_phase(C.CGKeyCode(sc.Code), C.CGEventFlags(sc.Flags), C.int(mod), C.int(d))
+	return nil
+}
 
 // Post sends the shortcut to the frontmost app.
 func Post(sc Shortcut) error {

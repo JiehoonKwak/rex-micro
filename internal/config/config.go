@@ -122,6 +122,9 @@ type Action struct {
 	Builtin string            `toml:"builtin"`
 	// Shortcut is a key combination sent to the frontmost app, e.g. "cmd+shift+]".
 	Shortcut string `toml:"shortcut"`
+	// Held keeps the shortcut pressed for as long as the pad key is, so an
+	// app that times its hotkey (tap to toggle, hold to talk) sees a real press.
+	Held bool `toml:"held"`
 }
 
 // KeyBinding is either a single Action (the press) or per-gesture actions.
@@ -424,7 +427,25 @@ func PressOnly(key string) bool {
 	return key == "ENC_CW" || key == "ENC_CC" || strings.HasPrefix(key, "STICK_")
 }
 
+// HeldShortcut is the binding's shortcut when it is held with the pad key.
+func (k *KeyBinding) HeldShortcut() *Action {
+	if a := k.Gesture("press"); a != nil && a.Held {
+		return a
+	}
+	return nil
+}
+
 func (k *KeyBinding) pressOnly(key string) error {
+	if k.HeldShortcut() != nil {
+		if PressOnly(key) {
+			return errors.New("held: a dial turn or stick direction is never held down")
+		}
+		for _, g := range gestureNames {
+			if g != "press" && k.Gesture(g) != nil {
+				return fmt.Errorf("a held shortcut is the whole binding; remove %s", g)
+			}
+		}
+	}
 	if !PressOnly(key) {
 		return nil
 	}
@@ -486,6 +507,9 @@ func (a *Action) validate(layers []Layer) error {
 	}
 	if a.Detach && kind != "shell" {
 		return errors.New("detach only applies to shell")
+	}
+	if a.Held && kind != "shortcut" {
+		return errors.New("held only applies to shortcut")
 	}
 	switch kind {
 	case "builtin":

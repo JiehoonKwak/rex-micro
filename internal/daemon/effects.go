@@ -172,6 +172,7 @@ func (e *effectQueue) close() {
 type executor struct {
 	rex     *rex.Client
 	post    func(macos.Shortcut) error
+	hold    func(sc macos.Shortcut, down bool) error
 	front   func() string
 	program func() string // in the Rex pane on screen, as last seen
 	logger  *log.Logger
@@ -185,6 +186,15 @@ func (x executor) Shortcut(combo, app, program string) error {
 	if err != nil {
 		return err
 	}
+	if err := x.guard(combo, app, program); err != nil {
+		return err
+	}
+	return x.post(sc)
+}
+
+// guard returns ErrSkipped when the app or program a shortcut was meant for
+// has left the front while the effect waited.
+func (x executor) guard(combo, app, program string) error {
 	if now := x.front(); app != "" && config.AppName(now) != config.AppName(app) {
 		x.logger.Printf("shortcut %s was for %s, but %s is in front now; skipped", combo, app, now)
 		return engine.ErrSkipped
@@ -193,7 +203,21 @@ func (x executor) Shortcut(combo, app, program string) error {
 		x.logger.Printf("shortcut %s was for %s, but the Rex pane now runs %s; skipped", combo, program, now)
 		return engine.ErrSkipped
 	}
-	return x.post(sc)
+	return nil
+}
+
+// HoldShortcut presses or releases a shortcut held with a pad key. The
+// press checks focus like Shortcut; the release always goes out (the engine
+// passes no app for it), so a key is never left down.
+func (x executor) HoldShortcut(combo, app, program string, down bool) error {
+	sc, err := macos.ParseShortcut(combo)
+	if err != nil {
+		return err
+	}
+	if err := x.guard(combo, app, program); err != nil {
+		return err
+	}
+	return x.hold(sc, down)
 }
 
 func (x executor) Show(p rex.Pane, zoom bool) error {
