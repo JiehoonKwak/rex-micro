@@ -1,0 +1,107 @@
+# rex-micro configuration
+#
+# Edit, then run `rex-micro doctor` to check it. The daemon reloads on save.
+# Reference: https://github.com/JiehoonKwak/rex-micro#configuration
+
+[rex]
+app = ""          # Rex app client label or ID; "" picks the Rex app on this Mac
+poll = "1s"       # how often agent state is refreshed
+
+[agents]
+# Which panes the six Agent Keys follow:
+#   auto     - panes running an agent (Claude Code, Codex, ...), in session order
+#   sessions - Rex sessions 1-6; the key shows the most urgent agent in that session
+#   slots    - the panes named in `slots`, by label or block ID
+mode = "auto"
+# slots = ["api", "web", "docs"]
+press = "show"         # show | show_zoom | none
+double = "show_zoom"
+always = false         # true: layers cannot rebind AG00-AG05; they always show agents
+
+[lighting]
+brightness = 0.8       # 0-1, applied on top of each state's own brightness
+backlight = "layer"    # "layer" lights the keys in the active layer's color; "off"
+
+[lighting.states]
+# effect: solid | breath | shallow_breath | snake | rainbow | gradient | off
+# speed (0-1) applies to animated effects and defaults to 0.4.
+working = { color = "#3B82F6", effect = "breath" }
+blocked = { color = "#F59E0B", effect = "breath", speed = 0.8 }
+error   = { color = "#EF4444", effect = "breath", speed = 0.8 }
+done    = { color = "#22C55E" }
+idle    = { color = "#FFFFFF", brightness = 0.5 }
+empty   = { effect = "off" }
+
+[stick]
+threshold = 0.6        # how far to push before a direction fires (0-1)
+angle_offset = 0.0     # rotate directions if up comes out as right (-1 to 1 = a full turn)
+
+[timing]
+double_press = "300ms"
+hold = "500ms"
+
+# Layers. The first layer is the base: keys a later layer leaves out fall
+# through to it. Press the dial to cycle layers, or let a layer turn on by
+# itself with match:
+#   match = { app = "Google Chrome" }   while that app is in front ("Rex" = any Rex)
+#   match = { program = "lazygit" }     while that program runs in the Rex pane you see
+# A layer you pick by hand stays until you switch apps or the program changes;
+# then the matching layer (or the first) comes back.
+# A layer that binds an Agent Key lights it in the layer color.
+# `rex-micro edit` edits all of this on screen.
+#
+# Key names:  AG00-AG05 (Agent Keys), ACT06-ACT09, MIC (the wide key), ACT12,
+#             ENC_CLK (dial press), ENC_CW / ENC_CC (dial turns),
+#             STICK_UP / STICK_DOWN / STICK_LEFT / STICK_RIGHT
+#
+# A binding does exactly one thing:
+#   { action = "pane.zoom" }                     Rex action (`rex-micro actions` lists them,
+#   { action = "pane.split", args = { direction = "right" } }   including your init.lua rex.action ones)
+#   { key = "enter" }  { key = ["ctrl+c"] }      key presses to the focused pane
+#   { key = "y", target = "agent" }              ...or to the selected agent pane
+#   { shortcut = "cmd+shift+]" }                 a shortcut in the app in front (needs Accessibility);
+#   { shortcut = "right_option" }                a lone modifier taps that key (dictation hotkeys)
+#   { text = "continue" }                        type text into the selected agent pane
+#   { rex = ["run", "--", "lazygit"] }           any rex CLI arguments
+#   { shell = "open -a Typeless" }               a shell command; effects run in order, so it
+#                                                waits (up to 10s); add detach = true for long ones
+#   { builtin = "layer.next" }                   layer.next, layer.prev, layer.<name>, session.<1-9>,
+#                                                agent.show, agent.show_zoom, agent.attention, none
+# Gestures: give a table per gesture instead of a single binding:
+#   MIC = { down = { shell = "..." }, up = { shell = "..." } }   push-to-talk
+#   ACT06 = { press = { ... }, double = { ... }, hold = { ... } }
+
+[[layer]]
+name = "agents"
+color = "#8B5CF6"
+
+[layer.keys]
+ACT06 = { action = "pane.zoom" }          # FAST cap: zoom the focused pane
+ACT07 = { key = "enter" }                 # APPROVE cap
+ACT08 = { key = "escape" }                # REJECT cap
+ACT09 = { action = "pane.split.auto" }    # SPLIT cap
+MIC   = { builtin = "none" }              # bind your dictation tool here
+ACT12 = { key = "enter" }                 # CODEX cap: send
+ENC_CLK = { builtin = "layer.next" }
+ENC_CW  = { key = "page_down" }
+ENC_CC  = { key = "page_up" }
+STICK_UP    = { action = "pane.focus.up" }
+STICK_DOWN  = { action = "pane.focus.down" }
+STICK_LEFT  = { action = "pane.focus.left" }
+STICK_RIGHT = { action = "pane.focus.right" }
+
+# Example second layer: uncomment to try it.
+#
+# [[layer]]
+# name = "layout"
+# color = "#06B6D4"
+#
+# [layer.keys]
+# AG00 = { builtin = "session.1" }
+# AG01 = { builtin = "session.2" }
+# ACT06 = { action = "pane.split.right" }
+# ACT07 = { action = "pane.split.down" }
+# ACT08 = { action = "pane.close" }
+# ACT09 = { action = "client.tab.new" }
+# ENC_CW = { action = "client.tab.next" }
+# ENC_CC = { action = "client.tab.previous" }
