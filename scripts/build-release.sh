@@ -21,8 +21,11 @@ if [ -n "${MACOS_CERT_P12:-}" ]; then
   security unlock-keychain -p "$pass" "$kc"
   security import "$dist/id.p12" -k "$kc" -P "${MACOS_CERT_PASSWORD:-}" -T /usr/bin/codesign
   security set-key-partition-list -S apple-tool:,apple: -s -k "$pass" "$kc" >/dev/null
-  identity=$(security find-identity -p codesigning "$kc" | awk -F'"' '/\)/ {print $2; exit}')
+  security list-keychains -d user > "$dist/keychains"
+  xargs security list-keychains -d user -s "$kc" < "$dist/keychains"
+  identity=$(security find-certificate -a -Z "$kc" | awk '/SHA-1 hash:/ {print $NF; exit}')
   codesign --force --sign "$identity" --keychain "$kc" --identifier "$id" --options runtime "$dist/stage/rex-micro"
+  xargs security list-keychains -d user -s < "$dist/keychains"
   security delete-keychain "$kc"
   rm -f "$dist/id.p12"
 else
