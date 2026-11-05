@@ -31,8 +31,9 @@ type Executor interface {
 	// pressed) still are; "" skips that check. It returns ErrSkipped when
 	// the check fails.
 	Shortcut(combo, app, program string) error
-	// HoldShortcut presses (down) or releases a shortcut held with a pad key.
-	HoldShortcut(combo, app, program string, down bool) error
+	// HoldShortcut presses (down) or releases a shortcut held with a pad key,
+	// at once and with no focus check.
+	HoldShortcut(combo string, down bool) error
 	// Shell runs cmd; it waits for it (keeping effects in order) unless detach.
 	Shell(cmd string, detach bool) error
 }
@@ -446,14 +447,12 @@ func (e *Engine) do(name string, a *config.Action) {
 	case "shortcut":
 		combo, app, program := a.Shortcut, e.cur.app, e.cur.program
 		if d := gestureAction(e.cur.binding, "down"); e.gesture == "up" && d != nil && d.Shortcut == combo {
-			// The second tap of a toggle, or the release of a held key, whose
-			// down ran: always send it, or the toggle or key stays on. Any
-			// other up keeps the focus check.
+			// The second tap of a toggle whose first tap ran: always send
+			// it, or the toggle stays on. Any other up keeps the focus check.
 			app, program = "", ""
 		}
 		if a.Held {
-			down := e.gesture == "down"
-			e.effect(name, func() error { return e.exec.HoldShortcut(combo, app, program, down) })
+			e.holdNow(name, combo)
 			break
 		}
 		e.effect(name, func() error { return e.exec.Shortcut(combo, app, program) })
@@ -463,6 +462,27 @@ func (e *Engine) do(name string, a *config.Action) {
 	case "shell":
 		cmd, detach := a.Shell, a.Detach
 		e.effect(name, func() error { return e.exec.Shell(cmd, detach) })
+	}
+}
+
+// holdNow presses or releases a held shortcut at once, bypassing the effect
+// queue: the app on the other end times the press (tap versus hold), so the
+// edges must move when the pad key does, not after a slow action ahead of
+// them. Posting at once also makes a focus check moot. The release follows
+// only a press that went out.
+func (e *Engine) holdNow(name, combo string) {
+	down, p := e.gesture == "down", e.cur.press
+	e.queued = true
+	if !down && p != nil && !p.started.Load() {
+		e.logf("%s: its press did not go out; nothing to release", name)
+		return
+	}
+	err := e.exec.HoldShortcut(combo, down)
+	if down && p != nil && err == nil {
+		p.started.Store(true)
+	}
+	if err != nil {
+		e.logf("%s: %v", name, err)
 	}
 }
 

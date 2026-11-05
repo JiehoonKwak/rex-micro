@@ -207,14 +207,11 @@ func (x executor) guard(combo, app, program string) error {
 }
 
 // HoldShortcut presses or releases a shortcut held with a pad key. The
-// press checks focus like Shortcut; the release always goes out (the engine
-// passes no app for it), so a key is never left down.
-func (x executor) HoldShortcut(combo, app, program string, down bool) error {
+// engine calls it the moment the pad key moves, so there is no focus to
+// recheck.
+func (x executor) HoldShortcut(combo string, down bool) error {
 	sc, err := macos.ParseShortcut(combo)
 	if err != nil {
-		return err
-	}
-	if err := x.guard(combo, app, program); err != nil {
 		return err
 	}
 	return x.hold(sc, down)

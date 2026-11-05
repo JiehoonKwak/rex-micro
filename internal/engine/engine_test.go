@@ -44,8 +44,8 @@ func (r *recorder) Shortcut(c, app, program string) error {
 	return nil
 }
 
-func (r *recorder) HoldShortcut(c, app, program string, down bool) error {
-	r.calls, r.ctx = append(r.calls, fmt.Sprintf("hold %s down=%v", c, down)), app+"/"+program
+func (r *recorder) HoldShortcut(c string, down bool) error {
+	r.calls = append(r.calls, fmt.Sprintf("hold %s down=%v", c, down))
 	return nil
 }
 
@@ -527,17 +527,21 @@ func TestReleaseRunsBesideADownStillRunning(t *testing.T) {
 }
 
 func TestHeldShortcutFollowsThePadKey(t *testing.T) {
-	e, r := setup(t, "[[layer]]\nname = \"base\"\n[layer.keys]\nMIC = { shortcut = \"right_option\", held = true }\n")
-	e.SetContext("Rex", "zsh")
-	micDown(e)
-	want(t, r, "hold right_option down=true")
-	if r.ctx != "Rex/zsh" {
-		t.Fatalf("press ctx = %q", r.ctx)
+	cfg, err := config.Parse("[[layer]]\nname = \"base\"\n[layer.keys]\nMIC = { shortcut = \"right_option\", held = true }\nACT06 = { shell = \"sleep 3\" }\n")
+	if err != nil {
+		t.Fatal(err)
 	}
+	r := &recorder{}
+	var queued int
+	e := New(cfg, r, func(func(), bool) { queued++ }, t.Logf) // a worker stuck on a slow action
+	e.SetContext("Rex", "zsh")
+	press(e, "ACT06", t0)
+	micDown(e)
+	want(t, r, "hold right_option down=true") // not behind the queued shell
 	e.SetContext("Google Chrome", "")
 	micUp(e)
 	want(t, r, "hold right_option down=false")
-	if r.ctx != "/" {
-		t.Fatalf("release ctx = %q; a held key must always be let go", r.ctx)
+	if queued != 1 {
+		t.Fatalf("queued %d effects; held edges must not queue", queued)
 	}
 }

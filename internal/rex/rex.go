@@ -27,16 +27,21 @@ type Runner interface {
 	Run(ctx context.Context, stdin []byte, args ...string) ([]byte, error)
 }
 
-// ExecRunner runs a real rex binary. It never starts a Rex server: the
-// daemon only reads and drives a Rex that is already running.
-type ExecRunner struct{ Path string }
-
-func (r ExecRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]byte, error) {
-	path := r.Path
+// Command builds a rex invocation that never starts a Rex server: rex-micro
+// only reads and drives a Rex that is already running. Every rex call goes
+// through it.
+func Command(ctx context.Context, path string, args ...string) *exec.Cmd {
 	if path == "" {
 		path = "rex"
 	}
-	cmd := exec.CommandContext(ctx, path, append([]string{"--autostart=false"}, args...)...)
+	return exec.CommandContext(ctx, path, append([]string{"--autostart=false"}, args...)...)
+}
+
+// ExecRunner runs a real rex binary through Command.
+type ExecRunner struct{ Path string }
+
+func (r ExecRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]byte, error) {
+	cmd := Command(ctx, r.Path, args...)
 	if stdin != nil {
 		cmd.Stdin = bytes.NewReader(stdin)
 	}

@@ -472,6 +472,9 @@ func (k *KeyBinding) validate(_ map[string]bool, layers []Layer) error {
 			continue
 		}
 		any = true
+		if a.Held && g != "press" {
+			return fmt.Errorf("%s: held is the whole binding, e.g. MIC = { shortcut = \"right_option\", held = true }", g)
+		}
 		if err := a.validate(layers); err != nil {
 			if g == "press" && direct {
 				return err

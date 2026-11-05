@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -330,7 +331,7 @@ func actions() error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(daemon.RexPath(), "actions", "-C", app)
+	cmd := rex.Command(context.Background(), daemon.RexPath(), "actions", "-C", app)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	return cmd.Run()
 }

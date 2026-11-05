@@ -1,11 +1,11 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 
@@ -134,7 +134,7 @@ func rexActions(rc *rex.Client) []editor.RexAction {
 	var out []editor.RexAction
 	seen := map[string]bool{}
 	add := func(args ...string) {
-		raw, err := exec.Command(daemon.RexPath(), append([]string{"actions", "--json"}, args...)...).Output()
+		raw, err := rex.Command(context.Background(), daemon.RexPath(), append([]string{"actions", "--json"}, args...)...).Output()
 		if err != nil {
 			return
 		}
