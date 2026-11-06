@@ -1,17 +1,20 @@
 // Package rex drives Rex through its `rex` command-line tool.
 //
 // The CLI is Rex's stable interface, so rex-micro never speaks the server's
-// socket protocol itself. One snapshot of every session's panes and agent
-// state costs a single `rex do` call running an embedded Lua script.
+// socket protocol itself. An embedded Lua script builds a snapshot of every
+// session's panes and agent state inside the server: once per `rex do` call,
+// or, for the daemon, from one long-lived `rex do` that rebuilds it on events.
 package rex
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"sort"
 	"strings"
@@ -56,6 +59,48 @@ func (r ExecRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]by
 	}
 	return out.Bytes(), nil
 }
+
+// Stream runs rex and calls line with each line it prints, until it exits.
+func (r ExecRunner) Stream(ctx context.Context, stdin []byte, line func([]byte), args ...string) error {
+	cmd := Command(ctx, r.Path, args...)
+	cmd.Stdin = bytes.NewReader(stdin)
+	errb := &tail{}
+	cmd.Stderr = errb
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	sc := bufio.NewScanner(out)
+	sc.Buffer(make([]byte, 64*1024), 16<<20)
+	for sc.Scan() {
+		line(sc.Bytes())
+	}
+	_, _ = io.Copy(io.Discard, out) // a line past the buffer: keep rex unblocked
+	if err := cmd.Wait(); err != nil {
+		msg := strings.TrimSpace(errb.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("rex %s: %s", strings.Join(args, " "), msg)
+	}
+	return nil
+}
+
+// tail keeps the last few KB written to it: a watcher runs for days.
+type tail struct{ b []byte }
+
+func (t *tail) Write(p []byte) (int, error) {
+	t.b = append(t.b, p...)
+	if len(t.b) > 4096 {
+		t.b = t.b[len(t.b)-4096:]
+	}
+	return len(p), nil
+}
+
+func (t *tail) String() string { return string(t.b) }
 
 // Pane is one block and, when an agent runs in it, its state.
 type Pane struct {
@@ -120,25 +165,86 @@ func (c *Client) run(stdin []byte, args ...string) ([]byte, error) {
 	return c.Runner.Run(ctx, stdin, args...)
 }
 
-// Snapshot lists every pane in every session with its agent state.
-func (c *Client) Snapshot() ([]Pane, error) {
+func (c *Client) script(watch time.Duration) []byte {
 	c.mu.Lock()
 	pref := c.App
 	c.mu.Unlock()
-	script := append([]byte(fmt.Sprintf("local app_pref = %q\n", pref)), snapshotLua...)
-	out, err := c.run(script, "do", "-")
-	if err != nil {
-		return nil, err
+	head := fmt.Sprintf("local app_pref = %q\nlocal watch = %g\n", pref, watch.Seconds())
+	return append([]byte(head), snapshotLua...)
+}
+
+func parsePanes(out []byte) ([]Pane, error) {
+	out = bytes.TrimSpace(out)
+	// Lua encodes an empty list as {}.
+	if string(out) == "{}" {
+		return nil, nil
 	}
 	var panes []Pane
-	if err := json.Unmarshal(bytes.TrimSpace(out), &panes); err != nil {
-		// Lua returns {} for an empty list, which JSON-decodes as an object.
-		if strings.TrimSpace(string(out)) == "{}" {
-			return nil, nil
-		}
+	if err := json.Unmarshal(out, &panes); err != nil {
 		return nil, fmt.Errorf("parse snapshot: %w", err)
 	}
 	return panes, nil
+}
+
+// Snapshot lists every pane in every session with its agent state.
+func (c *Client) Snapshot() ([]Pane, error) {
+	out, err := c.run(c.script(0), "do", "-")
+	if err != nil {
+		return nil, err
+	}
+	return parsePanes(out)
+}
+
+// Streamer runs a long-lived rex command and hands over each output line.
+// ExecRunner implements it; a Runner without it is polled instead.
+type Streamer interface {
+	Stream(ctx context.Context, stdin []byte, line func([]byte), args ...string) error
+}
+
+// Watch calls emit with a snapshot whenever one changes, until ctx ends or
+// the connection to Rex drops. One rex process stays connected and rebuilds
+// the snapshot inside the server after events, and every `every` in case an
+// event was missed, so nothing is spawned or attached while Rex is idle. With
+// a Runner that cannot stream, Watch polls every `every`, sooner on refresh.
+func (c *Client) Watch(ctx context.Context, every time.Duration, refresh <-chan struct{}, emit func([]Pane)) error {
+	s, ok := c.Runner.(Streamer)
+	if !ok {
+		for {
+			panes, err := c.Snapshot()
+			if err != nil {
+				return err
+			}
+			emit(panes)
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(every):
+			case <-refresh:
+			}
+		}
+	}
+	var bad error
+	err := s.Stream(ctx, c.script(every), func(line []byte) {
+		if len(line) == 0 || (line[0] != '[' && line[0] != '{') {
+			return // rex's "listening" banner
+		}
+		panes, err := parsePanes(line)
+		if err != nil {
+			bad = err
+			return
+		}
+		emit(panes)
+	}, "do", "-", "--all")
+	if ctx.Err() != nil {
+		return nil
+	}
+	if err == nil {
+		err = errors.New("rex stopped watching")
+	}
+	if bad != nil {
+		err = fmt.Errorf("%w (%v)", err, bad)
+	}
+	return err
 }
 
 // AppClient resolves the app client that receives client actions. The rex

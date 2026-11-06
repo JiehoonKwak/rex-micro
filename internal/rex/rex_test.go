@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type stub struct{ out string }
@@ -32,5 +33,40 @@ func TestExecRunnerNeverStartsAServer(t *testing.T) {
 	out, err := ExecRunner{Path: fake}.Run(context.Background(), nil, "session", "list")
 	if err != nil || strings.TrimSpace(string(out)) != "--autostart=false session list" {
 		t.Fatalf("%q %v", out, err)
+	}
+}
+
+type streamer struct {
+	stub
+	args  []string
+	stdin string
+	lines []string
+}
+
+func (s *streamer) Stream(_ context.Context, stdin []byte, line func([]byte), args ...string) error {
+	s.args, s.stdin = args, string(stdin)
+	for _, l := range s.lines {
+		line([]byte(l))
+	}
+	return nil
+}
+
+func TestWatchStreamsSnapshotsFromOneProcess(t *testing.T) {
+	s := &streamer{lines: []string{
+		"listening: 15 handlers, every session; Ctrl-C to stop",
+		`[{"session":"s1","block":"b1","app":"codex","state":"working"}]`,
+		"{}",
+	}}
+	c := &Client{Runner: s}
+	var got [][]Pane
+	err := c.Watch(context.Background(), 10*time.Second, nil, func(p []Pane) { got = append(got, p) })
+	if err == nil {
+		t.Fatal("Watch returned no error when rex stopped")
+	}
+	if strings.Join(s.args, " ") != "do - --all" || !strings.Contains(s.stdin, "local watch = 10\n") {
+		t.Fatalf("args %v stdin head %q", s.args, s.stdin[:60])
+	}
+	if len(got) != 2 || len(got[0]) != 1 || got[0][0].App != "codex" || len(got[1]) != 0 {
+		t.Fatalf("snapshots %+v", got)
 	}
 }

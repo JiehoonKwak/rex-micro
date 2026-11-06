@@ -6,6 +6,7 @@ package daemon
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -97,6 +98,7 @@ type daemon struct {
 
 	status       Status
 	poll         atomic.Int64
+	rewatch      atomic.Pointer[context.CancelFunc] // restarts watchRex
 	lastSent     []byte
 	pauses       int
 	foreignAt    time.Time
@@ -225,7 +227,7 @@ func Start(opts Options) error {
 	d.eng.OnLayer = func(int) { d.render(true) }
 	d.askTrust(logger)
 	go d.runEffects()
-	go d.pollRex()
+	go d.watchRex()
 	go d.pollFront(opts.Stop)
 	go d.serve(ln, logger)
 
@@ -384,75 +386,6 @@ func (d *daemon) kick() {
 	}
 }
 
-func (d *daemon) pollRex() {
-	for {
-		panes, err := d.rex.Snapshot()
-		d.snapshots <- snapshot{panes, err}
-		select {
-		case <-time.After(time.Duration(d.poll.Load())):
-		case <-d.refresh:
-			time.Sleep(150 * time.Millisecond) // let the action land first
-		}
-	}
-}
-
-func (d *daemon) onSnapshot(s snapshot) {
-	if s.err != nil {
-		if d.status.RexErr != s.err.Error() {
-			d.logger.Printf("rex: %v", s.err)
-		}
-		d.status.RexErr = s.err.Error()
-		d.rex.ForgetApp()
-		return
-	}
-	d.status.RexErr = ""
-	d.panes = s.panes
-	d.slots = d.assigner.Assign(s.panes, d.cfg.Agents)
-	d.eng.SetPanes(d.panes, d.slots)
-	d.followContext()
-	d.render(false)
-}
-
-// pollFront watches which app is in front and hands each change to the loop.
-func (d *daemon) pollFront(stop <-chan struct{}) {
-	last := ""
-	t := time.NewTicker(frontPoll)
-	defer t.Stop()
-	for {
-		select {
-		case <-stop:
-			return
-		case <-t.C:
-		}
-		app := d.frontApp()
-		if app == "" || app == last {
-			continue
-		}
-		last = app
-		select { // keep only the newest
-		case <-d.fronts:
-		default:
-		}
-		d.fronts <- app
-	}
-}
-
-var frontPoll = 300 * time.Millisecond
-
-// followContext gives the engine the app in front and, inside Rex, the
-// program in the pane Rex shows, so layers with match rules take over.
-func (d *daemon) followContext() {
-	program := ""
-	if config.AppName(d.front) == config.RexApp {
-		if p := rex.Current(d.panes); p != nil {
-			program = p.Program
-		}
-	}
-	d.status.FrontApp, d.status.Program = d.front, program
-	d.context.Store(&[2]string{d.front, program})
-	d.eng.SetContext(d.front, program)
-}
-
 // askTrust shows the Accessibility prompt once when a binding sends shortcuts.
 func (d *daemon) askTrust(logger *log.Logger) {
 	if d.asked || !d.cfg.UsesShortcut() || d.trusted() {
@@ -545,9 +478,14 @@ func (d *daemon) reload(logger *log.Logger) error {
 		return err
 	}
 	d.cfgErr = ""
+	if cfg.Rex != d.cfg.Rex {
+		d.rex.SetApp(cfg.Rex.App)
+		d.poll.Store(int64(cfg.Rex.Poll.Duration))
+		if stop := d.rewatch.Load(); stop != nil {
+			(*stop)()
+		}
+	}
 	d.cfg = cfg
-	d.rex.SetApp(cfg.Rex.App)
-	d.poll.Store(int64(cfg.Rex.Poll.Duration))
 	d.eng.SetConfig(cfg)
 	d.askTrust(logger)
 	d.slots = d.assigner.Assign(d.panes, cfg.Agents)

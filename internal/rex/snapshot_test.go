@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -36,7 +38,12 @@ var fakeServer = map[string]any{
 		map[string]any{"client_id": "client:phone", "updated_at": "2026-11-06T00:00:11Z"},
 		map[string]any{"client_id": "client:app", "updated_at": "2026-11-06T00:00:05Z"},
 	}},
-	"program_status:bB": map[string]any{"records": []any{map[string]any{"app": "claude-code", "state": "working"}}},
+	// Claude's own record says working while a subagent (a child record
+	// without app) waits on the user: the pane must show blocked.
+	"program_status:bB": map[string]any{"records": []any{
+		map[string]any{"app": "claude-code", "state": "working"},
+		map[string]any{"id": "agent-1", "state": "blocked"},
+	}},
 }
 
 func view(sid, block string) map[string]any {
@@ -93,13 +100,27 @@ func fromLua(v lua.LValue) any {
 }
 
 func (f luaRex) Run(_ context.Context, stdin []byte, args ...string) ([]byte, error) {
-	switch strings.Join(args, " ") {
-	case "do -":
-	default:
+	if strings.Join(args, " ") != "do -" {
 		return nil, fmt.Errorf("unexpected rex %v", args)
 	}
+	r := runScript(f.t, stdin)
+	return json.Marshal(r.result)
+}
+
+// scriptRun is what the snapshot script did against the fake server.
+type scriptRun struct {
+	result   any
+	attached int
+	events   []string // rex.on names
+	timers   []func() // rex.after and rex.every callbacks, in order
+	printed  []string
+}
+
+func runScript(t *testing.T, script []byte) *scriptRun {
+	t.Helper()
 	L := lua.NewState()
-	defer L.Close()
+	t.Cleanup(L.Close)
+	run := &scriptRun{}
 	get := func(key string) lua.LValue {
 		if v, ok := fakeServer[key]; ok {
 			return toLua(L, v)
@@ -109,9 +130,13 @@ func (f luaRex) Run(_ context.Context, stdin []byte, args ...string) ([]byte, er
 	rexT := L.NewTable()
 	rexT.RawSetString("call", L.NewFunction(func(L *lua.LState) int {
 		method := L.CheckString(1)
-		if method == "session.view" {
+		switch method {
+		case "session.view":
 			L.Push(get("view:" + L.CheckTable(2).RawGetString("session_id").String()))
-		} else {
+		case "session.attach":
+			run.attached++
+			L.Push(lua.LNil)
+		default:
 			L.Push(get(method))
 		}
 		return 1
@@ -122,11 +147,79 @@ func (f luaRex) Run(_ context.Context, stdin []byte, args ...string) ([]byte, er
 		return 1
 	}))
 	rexT.RawSetString("block", block)
+	rexT.RawSetString("on", L.NewFunction(func(L *lua.LState) int {
+		run.events = append(run.events, L.CheckString(1))
+		return 0
+	}))
+	timer := L.NewTable()
+	timer.RawSetString("cancel", L.NewFunction(func(*lua.LState) int { return 0 }))
+	addTimer := L.NewFunction(func(L *lua.LState) int {
+		fn := L.CheckFunction(2)
+		run.timers = append(run.timers, func() {
+			if err := L.CallByParam(lua.P{Fn: fn, Protect: true}); err != nil {
+				t.Fatalf("timer: %v", err)
+			}
+		})
+		L.Push(timer)
+		return 1
+	})
+	rexT.RawSetString("after", addTimer)
+	rexT.RawSetString("every", addTimer)
+	jsonT := L.NewTable()
+	jsonT.RawSetString("encode", L.NewFunction(func(L *lua.LState) int {
+		b, _ := json.Marshal(fromLua(L.CheckAny(1)))
+		L.Push(lua.LString(b))
+		return 1
+	}))
+	rexT.RawSetString("json", jsonT)
 	L.SetGlobal("rex", rexT)
-	if err := L.DoString(string(stdin)); err != nil {
-		f.t.Fatalf("snapshot.lua: %v", err)
+	stdout := L.NewTable()
+	stdout.RawSetString("write", L.NewFunction(func(L *lua.LState) int {
+		for i := 2; i <= L.GetTop(); i++ {
+			run.printed = append(run.printed, L.CheckString(i))
+		}
+		return 0
+	}))
+	stdout.RawSetString("flush", L.NewFunction(func(*lua.LState) int { return 0 }))
+	ioT := L.NewTable()
+	ioT.RawSetString("stdout", stdout)
+	L.SetGlobal("io", ioT)
+	if err := L.DoString(string(script)); err != nil {
+		t.Fatalf("snapshot.lua: %v", err)
 	}
-	return json.Marshal(fromLua(L.Get(-1)))
+	run.result = fromLua(L.Get(-1))
+	return run
+}
+
+func TestWatchScriptStaysAttachedAndPrintsOnChange(t *testing.T) {
+	one := runScript(t, (&Client{}).script(0))
+	if one.attached == 0 {
+		t.Fatal("a one-shot snapshot must attach to read sessions")
+	}
+	c := &Client{}
+	w := runScript(t, c.script(10*time.Second))
+	for _, want := range []string{"session_view_changed", "terminal.program_status_changed", "terminal.size_changed", "terminal.process_changed"} {
+		if !slices.Contains(w.events, want) {
+			t.Fatalf("watcher does not listen for %s: %v", want, w.events)
+		}
+	}
+	if slices.Contains(w.events, "terminal.title_changed") {
+		t.Fatal("watcher rebuilds on every spinner frame")
+	}
+	for _, fn := range w.timers {
+		fn() // the initial snapshot and two fallback ticks, nothing changed
+		fn()
+	}
+	if w.attached != 0 {
+		t.Fatalf("the watcher attached %d times; rex do --all already hears every session", w.attached)
+	}
+	if len(w.printed) != 2 || w.printed[1] != "\n" {
+		t.Fatalf("printed %q, want one snapshot line", w.printed)
+	}
+	panes, err := parsePanes([]byte(w.printed[0]))
+	if err != nil || len(panes) != 4 {
+		t.Fatalf("panes %v err %v", panes, err)
+	}
 }
 
 func TestSnapshotScriptFindsShownPaneAndPrograms(t *testing.T) {
@@ -159,7 +252,7 @@ func TestSnapshotScriptFindsShownPaneAndPrograms(t *testing.T) {
 		t.Fatalf("current = %+v", cur)
 	}
 	for _, p := range panes {
-		if p.Block == "bB" && (p.Program != "lazygit" || p.App != "claude-code" || p.State != "working" || p.SessionIndex != 2) {
+		if p.Block == "bB" && (p.Program != "lazygit" || p.App != "claude-code" || p.State != "blocked" || p.SessionIndex != 2) {
 			t.Fatalf("bB = %+v", p)
 		}
 		if strings.HasSuffix(p.Block, "2") && (p.Focused || p.Program != "") {

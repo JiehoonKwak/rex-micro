@@ -5,13 +5,14 @@
 
 [rex]
 app = ""          # Rex app client label or ID; "" picks the Rex app on this Mac
-poll = "1s"       # how often agent state is refreshed
+poll = "30s"      # full re-read in case Rex missed an event; also the retry while Rex is down
 
 [agents]
 # Which panes the six Agent Keys follow:
 #   auto     - panes running an agent (Claude Code, Codex, ...), in session order
 #   sessions - Rex sessions 1-6; the key shows the most urgent agent in that session
-#   slots    - the panes named in `slots`, by label or block ID
+#   slots    - the panes named in `slots`, by label or block ID (block IDs change
+#              when Rex restarts; labels do not)
 mode = "auto"
 # slots = ["api", "web", "docs"]
 press = "show"         # show | show_zoom | none

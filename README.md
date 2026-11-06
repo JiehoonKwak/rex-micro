@@ -180,7 +180,8 @@ your config uses one, and `rex-micro doctor` checks it.
 The Agent Keys have three modes. `auto` (the default) assigns agent panes in
 session order and keeps each assignment stable. `sessions` gives each key one
 session and shows that session's most urgent agent. `slots` follows the pane
-labels or block IDs you list.
+labels or block IDs you list; prefer labels, since block IDs change when Rex
+restarts.
 
 A layer can rebind an Agent Key (`AG00 = { shortcut = "cmd+t" }`). On that
 layer the key lights in the layer's color instead of its agent's state. Set
@@ -216,8 +217,10 @@ Logs: `~/Library/Logs/rex-micro.log`.
 The pad's keys don't send ordinary keystrokes. Every key, the dial and the
 stick report over a vendor HID channel (usage page `0xFF00`) as JSON-RPC, and
 the same channel drives the LEDs. rex-micro opens that channel with IOKit. It
-reads each pane's agent state from Rex through the `rex` CLI and sends key
-actions back the same way. Protocol facts come from
+follows Rex through one long-running `rex do` script that rebuilds a snapshot
+of every pane's agent state inside the server when Rex reports a change (and
+every `[rex] poll` in case one was missed), and sends key actions back through
+the `rex` CLI. Protocol facts come from
 [FreeMicro](https://github.com/eliBenven/freemicro)'s reverse-engineered
 [PROTOCOL.md](https://github.com/eliBenven/freemicro/blob/main/docs/PROTOCOL.md).
 
