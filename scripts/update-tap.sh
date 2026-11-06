@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 version=${1:?usage: update-tap.sh VERSION}
+if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  echo "rex-micro $version is a prerelease; the tap keeps the last stable release"
+  exit 0
+fi
 root=$(cd "$(dirname "$0")/.." && pwd)
 sha=$(awk '{print $1}' "$root/dist/checksums.txt")
 tmp=$(mktemp -d)
