@@ -2,7 +2,9 @@
 
 Push a `v*` tag; `.github/workflows/release.yml` does the rest:
 
-1. `test` runs the tests with a read-only token and no secrets.
+1. `test` runs `scripts/check-public.sh` (nothing personal or secret is
+   tracked; add your host names, one regex per line, to the gitignored
+   `.public-deny`) and the tests, with a read-only token and no secrets.
 2. `release` runs in the `release` environment, which only `v*` tags may use
    and which holds the secrets. It builds and signs the universal binary
    (`scripts/build-release.sh`), attests the tarball and binary

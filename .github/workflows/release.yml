@@ -21,6 +21,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - run: scripts/check-public.sh
       - run: go test ./...
   release:
     needs: test

@@ -2,3 +2,6 @@ bin/
 dist/
 *.p12
 STATE.md
+VISION.md
+.agents/interview/
+.public-deny

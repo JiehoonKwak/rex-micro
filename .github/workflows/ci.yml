@@ -35,6 +35,8 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+      - name: Check nothing personal or secret is tracked
+        run: scripts/check-public.sh
       - uses: zizmorcore/zizmor-action@v0.8.1
         with:
           advanced-security: false
