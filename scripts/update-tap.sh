@@ -10,6 +10,12 @@ chmod 600 "$key"
 export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
 git clone --depth 1 git@github.com:JiehoonKwak/homebrew-tap.git "$tmp/tap"
 mkdir -p "$tmp/tap/Formula"
+current=$(sed -n 's/^  version "\(.*\)"$/\1/p' "$tmp/tap/Formula/rex-micro.rb" 2>/dev/null || true)
+if [ -n "$current" ] &&
+  [ "$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -n 1)" = "$current" ]; then
+  echo "tap already has rex-micro $current; not writing $version"
+  exit 0
+fi
 sed -e "s/@VERSION@/$version/g" -e "s/@SHA256@/$sha/g" "$root/packaging/homebrew/rex-micro.rb" > "$tmp/tap/Formula/rex-micro.rb"
 cd "$tmp/tap"
 git add Formula/rex-micro.rb

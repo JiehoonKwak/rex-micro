@@ -9,6 +9,9 @@ Push a `v*` tag; `.github/workflows/release.yml` does the rest:
    (`actions/attest`), creates the GitHub release (gh drafts it, uploads every
    file, then publishes, and removes the draft if an upload fails), then updates the Homebrew formula (`scripts/update-tap.sh`).
 
+Release runs share one queued concurrency group, so they run one at a time in
+tag order, and the tap update never replaces a newer formula with an older one.
+
 Releases are immutable: a published tag and its files cannot change. A
 mistake is fixed by the next patch version, never by re-tagging.
 
