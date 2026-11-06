@@ -6,8 +6,8 @@ Push a `v*` tag; `.github/workflows/release.yml` does the rest:
 2. `release` runs in the `release` environment, which only `v*` tags may use
    and which holds the secrets. It builds and signs the universal binary
    (`scripts/build-release.sh`), attests the tarball and binary
-   (`actions/attest`), creates the GitHub release as a draft with every file,
-   publishes it, then updates the Homebrew formula (`scripts/update-tap.sh`).
+   (`actions/attest`), creates the GitHub release (gh drafts it, uploads every
+   file, then publishes, and removes the draft if an upload fails), then updates the Homebrew formula (`scripts/update-tap.sh`).
 
 Releases are immutable: a published tag and its files cannot change. A
 mistake is fixed by the next patch version, never by re-tagging.

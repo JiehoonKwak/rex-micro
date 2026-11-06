@@ -4,7 +4,7 @@ on:
     tags: ["v*"]
 permissions: {}
 concurrency:
-  group: release
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   test:
@@ -52,9 +52,10 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes dist/*.tar.gz dist/checksums.txt
-          gh release edit "$GITHUB_REF_NAME" --draft=false
+        # gh creates the release as a draft, uploads every file, then publishes
+        # it (so immutability applies to the complete set) and deletes the
+        # draft if an upload fails.
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes dist/*.tar.gz dist/checksums.txt
       - name: Update Homebrew tap
         env:
           TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}

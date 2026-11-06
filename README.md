@@ -64,11 +64,14 @@ rex-micro service install      # starts at login via launchd
 <details>
 <summary>Verify a download</summary>
 
-Releases are immutable and carry a build attestation, so you can check that a
-tarball was built by this repository's release workflow:
+Releases are immutable and carry a build attestation. Check that a tarball
+was built by the release workflow from its tag, and that it belongs to that
+release:
 
 ```sh
-gh attestation verify rex-micro_X.Y.Z_darwin_universal.tar.gz -R JiehoonKwak/rex-micro
+gh attestation verify rex-micro_X.Y.Z_darwin_universal.tar.gz -R JiehoonKwak/rex-micro \
+  --signer-workflow JiehoonKwak/rex-micro/.github/workflows/release.yml \
+  --source-ref refs/tags/vX.Y.Z
 gh release verify-asset vX.Y.Z rex-micro_X.Y.Z_darwin_universal.tar.gz -R JiehoonKwak/rex-micro
 ```
 </details>
