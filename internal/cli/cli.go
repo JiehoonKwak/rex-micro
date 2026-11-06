@@ -44,6 +44,7 @@ Setup and checks:
 Configuration:
   config path          print the config file location
   config init          write the default config (keeps an existing file)
+  config default       print the default config, which documents every option
   config check [FILE]  validate a config file
   config edit          open the config in $EDITOR
   keys [--layer NAME]  show what every key does
@@ -184,12 +185,14 @@ func shortBlock(b string) string {
 
 func configCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: rex-micro config path|init|check|edit")
+		return errors.New("usage: rex-micro config path|init|default|check|edit")
 	}
 	path := config.Path()
 	switch args[0] {
 	case "path":
 		fmt.Println(path)
+	case "default":
+		fmt.Print(config.Default)
 	case "init":
 		if _, err := os.Stat(path); err == nil {
 			fmt.Printf("%s already exists; left unchanged\n", path)

@@ -150,42 +150,17 @@ ENC_CW = { shortcut = "cmd+shift+]" }   # next tab
 ENC_CC = { shortcut = "cmd+shift+[" }   # previous tab
 ```
 
-Each binding does exactly one thing:
-
-| Binding | Effect |
-| --- | --- |
-| `{ action = "pane.zoom" }` | Run a Rex action. `rex-micro actions` lists them, including your own `rex.action` definitions from `init.lua`. |
-| `{ key = "enter" }` | Send key presses to the focused pane. Add `target = "agent"` to send them to the selected agent instead. |
-| `{ shortcut = "cmd+shift+]" }` | Press a keyboard shortcut in the app in front. A lone modifier (`fn`, `right_option`, `right_cmd`, ...) taps just that key, the hotkey many dictation apps use. Add `held = true` to keep it pressed while the pad key is. Needs Accessibility for rex-micro. |
-| `{ text = "continue" }` | Type text into the selected agent pane |
-| `{ rex = ["run", "--", "htop"] }` | Run the `rex` CLI with these arguments |
-| `{ shell = "..." }` | Run a shell command |
-| `{ builtin = "layer.next" }` | `layer.next`, `layer.prev`, `layer.<name>`, `session.<n>`, `agent.show`, `agent.show_zoom`, `agent.attention`, `none` |
-
-To bind several gestures to one key, give a table for each gesture:
-`press`, `double`, `hold`, `down` and `up`. Keys that a later layer leaves out
-fall through to the first layer.
-
-A layer with `match` turns on by itself. `match = { app = "Google Chrome" }`
-follows the app in front, using the name macOS shows for it (`app = "Rex"`
-covers Rex Beta too). `match = { program = "lazygit" }` follows the program in
-the Rex pane you are looking at, and wins over an app match. When nothing
-matches, the first layer is active. A layer you pick with the dial stays until
-you switch apps or the program in the Rex pane changes; then the matching layer,
-or the first, comes back.
+A binding is one of: a Rex action, key presses to a pane or agent, a keyboard
+shortcut (a lone modifier works as a dictation hotkey), text, `rex` CLI
+arguments, a shell command, or a builtin such as `layer.next`. A key can also
+take one binding per gesture (`press`, `double`, `hold`, `down`, `up`). A layer
+can turn on by itself for the app in front or the program in the Rex pane you
+see, and the Agent Keys follow agent panes, sessions or named slots. The
+[default config](internal/config/default.toml) shows every option with an
+example; `rex-micro config default` prints it.
 
 Shortcut bindings need Accessibility: the daemon asks for it the first time
 your config uses one, and `rex-micro doctor` checks it.
-
-The Agent Keys have three modes. `auto` (the default) assigns agent panes in
-session order and keeps each assignment stable. `sessions` gives each key one
-session and shows that session's most urgent agent. `slots` follows the pane
-labels or block IDs you list; prefer labels, since block IDs change when Rex
-restarts.
-
-A layer can rebind an Agent Key (`AG00 = { shortcut = "cmd+t" }`). On that
-layer the key lights in the layer's color instead of its agent's state. Set
-`[agents] always = true` to keep all six on their agents in every layer.
 
 ## For agents
 

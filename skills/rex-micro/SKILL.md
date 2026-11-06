@@ -32,66 +32,13 @@ swappable, so ask which position the user means when a cap name is ambiguous;
 factory caps are FAST, APPROVE, REJECT, SPLIT on `ACT06`-`ACT09`, MIC, and
 CODEX on `ACT12`.
 
-A binding does exactly one thing:
-
-| Binding | Effect |
-| --- | --- |
-| `{ action = "pane.zoom" }` | a Rex action; add `args = { direction = "right" }` when it takes arguments |
-| `{ key = "enter" }`, `{ key = ["ctrl+c"] }` | key presses to the pane focused in the Rex app |
-| `{ key = "y", target = "agent" }` | key presses to the selected agent pane (last one shown with an Agent Key, else the most urgent) |
-| `{ shortcut = "cmd+shift+]" }` | a keyboard shortcut in the app in front (names the key, so `]` with shift); a lone modifier such as `fn` or `right_option` taps that key alone; `held = true` keeps it down while the pad key is (tap-to-toggle, hold-to-talk dictation); needs Accessibility |
-| `{ text = "continue" }` | types text into the selected agent pane |
-| `{ rex = ["run", "--", "lazygit"] }` | any `rex` CLI arguments |
-| `{ shell = "open -a Typeless" }` | a shell command; effects run in order, so it waits up to 10s; add `detach = true` for long ones |
-| `{ builtin = "layer.next" }` | `layer.next`, `layer.prev`, `layer.<name>`, `session.<1-9>`, `agent.show`, `agent.show_zoom`, `agent.attention`, `none` |
-
-List the Rex actions a binding can use with `rex-micro actions`.
-Actions without a dot are the user's own `rex.action` definitions in
-`~/.config/rex/init.lua`; a complex behaviour belongs there, bound with
-`{ action = "name" }`.
-
-Gestures replace the single binding with one table per gesture:
-
-```toml
-ACT06 = { press = { action = "pane.zoom" }, double = { action = "pane.balance" }, hold = { action = "pane.close" } }
-MIC = { down = { shell = "..." }, up = { shell = "..." } }   # push-to-talk
-```
-
-A press waits `timing.double_press` only when the key also has `double`.
-
-## Layers
-
-`[[layer]]` tables, in order; the first is the base, and keys a later layer
-leaves out fall through to it. `ENC_CLK` cycles layers by default, and the
-backlight shows the active layer's `color`.
-
-A later layer can turn on by itself: `match = { app = "Google Chrome" }`
-(the app in front, as macOS names it; `"Rex"` covers every Rex edition) or
-`match = { program = "lazygit" }` (the program in the Rex pane on screen;
-beats an app match). `rex-micro status --json` shows `front_app` and
-`program`, which give the exact names to match. The first layer cannot have a
-match. A layer chosen with the dial stays until the app or program calls for
-another layer.
-
-```toml
-[[layer]]
-name = "tools"
-color = "#06B6D4"
-
-[layer.keys]
-ACT06 = { rex = ["run", "--", "lazygit"] }
-ACT07 = { action = "hunk" }
-```
-
-## Agent Keys
-
-`[agents] mode`: `auto` (agent panes in session order, stable across
-refreshes), `sessions` (sessions 1-6, most urgent agent in each), or `slots`
-(`slots = ["label-or-block-id", ...]`). `press`/`double` choose `show`,
-`show_zoom` or `none`; binding `AG0n` in a layer overrides them, and the key
-then lights in that layer's color. `always = true` keeps all six on their
-agents in every layer. Colors live in `[lighting.states]` for `working`,
-`blocked`, `error`, `done`, `idle`, `empty`.
+`rex-micro config default` prints the default config: every option, binding
+type, gesture, layer `match` and Agent Key mode, with examples. Read it before
+writing a binding you have not used. `rex-micro actions` lists the Rex actions;
+actions without a dot are the user's own `rex.action` definitions in
+`~/.config/rex/init.lua`, where a complex behaviour belongs, bound with
+`{ action = "name" }`. For a layer `match`, `rex-micro status --json` shows the
+exact `front_app` and `program` names.
 
 People can also edit bindings with `rex-micro edit`, a full-screen editor;
 suggest it when they want to try things by pressing keys.
@@ -118,7 +65,7 @@ when the change matters.
 4. A key that types a keystroke instead of reaching rex-micro has been
    remapped in the pad's own keymap (Work Louder Input edits it). `rex-micro
    test` marks such keys `device`. rex-micro only sees keys whose Layer 1
-   keycode is still the factory `KV_OAI_*` value.
+   keycode is still the factory one.
 5. A `shortcut` binding does nothing: Accessibility is missing for the
    daemon's executable. `doctor` reports `daemon shortcuts`; allow
    rex-micro under System Settings > Privacy & Security > Accessibility.

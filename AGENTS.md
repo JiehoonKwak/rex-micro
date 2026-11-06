@@ -1,6 +1,6 @@
 # AGENTS.md
 
-rex-micro drives the Rex terminal from a Work Louder Micro pad without the
+rex-micro drives the Rex terminal from a Work Louder Codex Micro pad without the
 Work Louder Input app. It is a public showcase for Rex, so behaviour belongs in
 `config.toml`, not in code paths tuned to one machine.
 

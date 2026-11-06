@@ -38,14 +38,16 @@ threshold = 0.6        # how far to push before a direction fires (0-1)
 angle_offset = 0.0     # rotate directions if up comes out as right (-1 to 1 = a full turn)
 
 [timing]
+# A press waits double_press only when the key also has a double binding.
 double_press = "300ms"
 hold = "500ms"
 
-# Layers. The first layer is the base: keys a later layer leaves out fall
-# through to it. Press the dial to cycle layers, or let a layer turn on by
+# Layers. The first layer is the base (it cannot have a match): keys a later
+# layer leaves out fall through to it. Press the dial to cycle layers, or let a layer turn on by
 # itself with match:
 #   match = { app = "Google Chrome" }   while that app is in front ("Rex" = any Rex)
-#   match = { program = "lazygit" }     while that program runs in the Rex pane you see
+#   match = { program = "lazygit" }     while that program runs in the Rex pane you see;
+#                                       wins over an app match, whatever the order
 # A layer you pick by hand stays until you switch apps or the program changes;
 # then the matching layer (or the first) comes back.
 # A layer that binds an Agent Key lights it in the layer color.
@@ -59,7 +61,8 @@ hold = "500ms"
 #   { action = "pane.zoom" }                     Rex action (`rex-micro actions` lists them,
 #   { action = "pane.split", args = { direction = "right" } }   including your init.lua rex.action ones)
 #   { key = "enter" }  { key = ["ctrl+c"] }      key presses to the focused pane
-#   { key = "y", target = "agent" }              ...or to the selected agent pane
+#   { key = "y", target = "agent" }              ...or to the selected agent pane (the last
+#                                                one shown with an Agent Key, else the most urgent)
 #   { shortcut = "cmd+shift+]" }                 a shortcut in the app in front (needs Accessibility);
 #   { shortcut = "right_option" }                a lone modifier taps that key (dictation hotkeys);
 #   { shortcut = "right_option", held = true }   ...or keeps it down while the pad key is
