@@ -98,7 +98,9 @@ type daemon struct {
 
 	status       Status
 	poll         atomic.Int64
-	rewatch      atomic.Pointer[context.CancelFunc] // restarts watchRex
+	rewatch      atomic.Pointer[context.CancelFunc] // ends the current watch
+	rewake       chan struct{}                      // ends a retry wait
+	watchDone    chan struct{}
 	lastSent     []byte
 	pauses       int
 	foreignAt    time.Time
@@ -204,6 +206,8 @@ func Start(opts Options) error {
 		rex:          &rex.Client{Runner: opts.Runner, App: cfg.Rex.App},
 		pad:          micro.New(opts.Device),
 		refresh:      make(chan struct{}, 1),
+		rewake:       make(chan struct{}, 1),
+		watchDone:    make(chan struct{}),
 		fronts:       make(chan string, 1),
 		frontApp:     opts.FrontApp,
 		trusted:      opts.Trusted,
@@ -227,12 +231,20 @@ func Start(opts Options) error {
 	d.eng.OnLayer = func(int) { d.render(true) }
 	d.askTrust(logger)
 	go d.runEffects()
-	go d.watchRex()
+	watchCtx, stopWatch := context.WithCancel(context.Background())
+	go d.watchRex(watchCtx)
 	go d.pollFront(opts.Stop)
 	go d.serve(ln, logger)
 
 	logger.Printf("rex-micro running (config %s)", cfgPath)
 	err = d.loop(opts.Stop, opts.Update, logger)
+	// Stop the rex watcher and wait for it, so no rex process outlives this one.
+	stopWatch()
+	select {
+	case <-d.watchDone:
+	case <-time.After(3 * time.Second):
+		logger.Printf("the rex watcher did not stop in time")
+	}
 	// Finish what held keys started (a push-to-talk stop) before this process
 	// goes away, whether it is stopping or restarting into a new version.
 	d.eng.Reset()
@@ -481,9 +493,7 @@ func (d *daemon) reload(logger *log.Logger) error {
 	if cfg.Rex != d.cfg.Rex {
 		d.rex.SetApp(cfg.Rex.App)
 		d.poll.Store(int64(cfg.Rex.Poll.Duration))
-		if stop := d.rewatch.Load(); stop != nil {
-			(*stop)()
-		}
+		d.restartRex()
 	}
 	d.cfg = cfg
 	d.eng.SetConfig(cfg)

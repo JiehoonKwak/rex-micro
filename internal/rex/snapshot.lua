@@ -122,7 +122,7 @@ end
 -- Not title_changed: spinners rename a terminal several times a second.
 for _, name in ipairs({
   "session_view_changed", "active_window_changed", "block_created", "block_closed",
-  "session_created", "session_destroyed", "session_label_changed",
+  "session_created", "session_destroyed", "session_moved", "session_label_changed",
   "terminal.program_status_changed", "terminal.program_status_removed",
   "terminal.process_changed", "terminal.size_changed",
 }) do

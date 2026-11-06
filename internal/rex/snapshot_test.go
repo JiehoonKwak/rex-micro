@@ -112,6 +112,7 @@ type scriptRun struct {
 	result   any
 	attached int
 	events   []string // rex.on names
+	handlers map[string]func()
 	timers   []func() // rex.after and rex.every callbacks, in order
 	printed  []string
 }
@@ -120,7 +121,7 @@ func runScript(t *testing.T, script []byte) *scriptRun {
 	t.Helper()
 	L := lua.NewState()
 	t.Cleanup(L.Close)
-	run := &scriptRun{}
+	run := &scriptRun{handlers: map[string]func(){}}
 	get := func(key string) lua.LValue {
 		if v, ok := fakeServer[key]; ok {
 			return toLua(L, v)
@@ -148,7 +149,13 @@ func runScript(t *testing.T, script []byte) *scriptRun {
 	}))
 	rexT.RawSetString("block", block)
 	rexT.RawSetString("on", L.NewFunction(func(L *lua.LState) int {
-		run.events = append(run.events, L.CheckString(1))
+		name, fn := L.CheckString(1), L.CheckFunction(2)
+		run.events = append(run.events, name)
+		run.handlers[name] = func() {
+			if err := L.CallByParam(lua.P{Fn: fn, Protect: true}, L.NewTable(), L.NewTable()); err != nil {
+				t.Fatalf("handler %s: %v", name, err)
+			}
+		}
 		return 0
 	}))
 	timer := L.NewTable()
@@ -198,7 +205,7 @@ func TestWatchScriptStaysAttachedAndPrintsOnChange(t *testing.T) {
 	}
 	c := &Client{}
 	w := runScript(t, c.script(10*time.Second))
-	for _, want := range []string{"session_view_changed", "terminal.program_status_changed", "terminal.size_changed", "terminal.process_changed"} {
+	for _, want := range []string{"session_view_changed", "terminal.program_status_changed", "terminal.size_changed", "terminal.process_changed", "session_moved"} {
 		if !slices.Contains(w.events, want) {
 			t.Fatalf("watcher does not listen for %s: %v", want, w.events)
 		}
@@ -219,6 +226,25 @@ func TestWatchScriptStaysAttachedAndPrintsOnChange(t *testing.T) {
 	panes, err := parsePanes([]byte(w.printed[0]))
 	if err != nil || len(panes) != 4 {
 		t.Fatalf("panes %v err %v", panes, err)
+	}
+	// Sessions reordered: the event's handler must lead to a new snapshot.
+	list := fakeServer["session.list"]
+	defer func() { fakeServer["session.list"] = list }()
+	fakeServer["session.list"] = map[string]any{"sessions": []any{
+		map[string]any{"session_id": "sB", "label": "b"},
+		map[string]any{"session_id": "sA", "label": "a"},
+	}}
+	before := len(w.timers)
+	w.handlers["session_moved"]()
+	if len(w.timers) != before+1 {
+		t.Fatal("session_moved started no refresh")
+	}
+	w.timers[before]()
+	if len(w.printed) != 4 {
+		t.Fatalf("no snapshot after session_moved: %q", w.printed)
+	}
+	if panes, _ = parsePanes([]byte(w.printed[2])); panes[0].Session != "sB" || panes[0].SessionIndex != 1 {
+		t.Fatalf("after move: %+v", panes[0])
 	}
 }
 

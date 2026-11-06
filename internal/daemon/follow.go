@@ -8,25 +8,54 @@ import (
 	"github.com/JiehoonKwak/rex-micro/internal/rex"
 )
 
-// watchRex keeps one Rex watcher running and hands its snapshots to the loop.
-// A lost connection (Rex quit or restarted) is retried every poll interval;
-// a config change to rex.app or rex.poll restarts the watcher at once.
-func (d *daemon) watchRex() {
-	for {
-		ctx, cancel := context.WithCancel(context.Background())
-		d.rewatch.Store(&cancel)
-		err := d.rex.Watch(ctx, time.Duration(d.poll.Load()), d.refresh, func(panes []rex.Pane) {
-			d.snapshots <- snapshot{panes, nil}
-		})
-		restarted := ctx.Err() != nil
-		cancel()
-		if err != nil && !restarted {
-			d.snapshots <- snapshot{nil, err}
-			select {
-			case <-time.After(time.Duration(d.poll.Load())):
-			case <-d.refresh:
-			}
+// watchRex keeps one Rex watcher running and hands its snapshots to the loop
+// until ctx ends. A lost connection (Rex quit or restarted) is retried every
+// poll interval; restartRex restarts it at once, also during that wait.
+func (d *daemon) watchRex(ctx context.Context) {
+	defer close(d.watchDone)
+	send := func(s snapshot) bool {
+		select {
+		case d.snapshots <- s:
+			return true
+		case <-ctx.Done():
+			return false
 		}
+	}
+	for ctx.Err() == nil {
+		select { // a restart asked for before this run began is this run
+		case <-d.rewake:
+		default:
+		}
+		run, cancel := context.WithCancel(ctx)
+		d.rewatch.Store(&cancel)
+		err := d.rex.Watch(run, time.Duration(d.poll.Load()), d.refresh, func(panes []rex.Pane) {
+			send(snapshot{panes, nil})
+		})
+		restarted := run.Err() != nil
+		cancel()
+		if err == nil || restarted {
+			continue
+		}
+		if !send(snapshot{nil, err}) {
+			return
+		}
+		select {
+		case <-time.After(time.Duration(d.poll.Load())):
+		case <-d.refresh:
+		case <-d.rewake:
+		case <-ctx.Done():
+		}
+	}
+}
+
+// restartRex makes watchRex start over with the current [rex] settings.
+func (d *daemon) restartRex() {
+	if stop := d.rewatch.Load(); stop != nil {
+		(*stop)()
+	}
+	select {
+	case d.rewake <- struct{}{}:
+	default:
 	}
 }
 
