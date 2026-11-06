@@ -2,26 +2,59 @@ name: release
 on:
   push:
     tags: ["v*"]
-permissions:
-  contents: write
+permissions: {}
+concurrency:
+  group: release
+  cancel-in-progress: false
 jobs:
-  release:
+  test:
     runs-on: macos-15
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
       - run: go test ./...
+  release:
+    needs: test
+    runs-on: macos-15
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write # create the release and upload its files
+      id-token: write # sign the attestation through Sigstore
+      attestations: write # store the build attestation
+      artifact-metadata: write # record the attested files
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
       - name: Build and sign
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
         run: scripts/build-release.sh "${GITHUB_REF_NAME#v}"
+      - uses: actions/attest@v4.2.2
+        with:
+          subject-path: |
+            dist/rex-micro_*_darwin_universal.tar.gz
+            dist/stage/rex-micro
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/checksums.txt --generate-notes
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes dist/*.tar.gz dist/checksums.txt
+          gh release edit "$GITHUB_REF_NAME" --draft=false
       - name: Update Homebrew tap
         env:
           TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}

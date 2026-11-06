@@ -6,12 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"text/tabwriter"
 
 	rexmicro "github.com/JiehoonKwak/rex-micro"
@@ -305,20 +303,6 @@ func skill(args []string) error {
 	}
 	fmt.Println("installed", dest)
 	return nil
-}
-
-func prompt(r io.Reader, q string) string {
-	fmt.Print(q)
-	var b strings.Builder
-	buf := make([]byte, 1)
-	for {
-		n, err := r.Read(buf)
-		if n == 0 || err != nil || buf[0] == '\n' {
-			break
-		}
-		b.WriteByte(buf[0])
-	}
-	return strings.TrimSpace(b.String())
 }
 
 func actions() error {
