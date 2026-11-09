@@ -94,7 +94,12 @@ layers = "off"
 #   { shell = "open -a Typeless" }               a shell command; effects run in order, so it
 #                                                waits (up to 10s); add detach = true for long ones
 #   { builtin = "layer.next" }                   layer.next, layer.prev, layer.<name>, session.<1-9>,
-#                                                agent.show, agent.show_zoom, agent.attention, none
+#                                                agent.show, agent.show_zoom, agent.attention, none,
+#                                                keys.show (this layer's keys on screen; see below)
+# Any binding can add label = "..." to name it on the keys overlay and in the editor:
+#   ACT07 = { shortcut = "cmd+shift+a", label = "Tab search" }
+# keys.show on a hold shows the keys while the key is held; on a press, for 5
+# seconds or until the next pad input. It takes no focus.
 # Gestures: give a table per gesture instead of a single binding:
 #   MIC = { down = { shell = "..." }, up = { shell = "..." } }   push-to-talk
 #   ACT06 = { press = { ... }, double = { ... }, hold = { ... } }
@@ -110,7 +115,7 @@ ACT08 = { key = "escape" }                # REJECT cap
 ACT09 = { action = "pane.split.auto" }    # SPLIT cap
 MIC   = { builtin = "none" }              # bind your dictation tool here
 ACT12 = { key = "enter" }                 # CODEX cap: send
-ENC_CLK = { builtin = "layer.next" }
+ENC_CLK = { press = { builtin = "layer.next" }, hold = { builtin = "keys.show" } }  # hold: show these keys
 ENC_CW  = { key = "page_down" }
 ENC_CC  = { key = "page_up" }
 STICK_UP    = { action = "pane.focus.up" }

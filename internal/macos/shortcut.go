@@ -60,22 +60,31 @@ var keyCodes = map[string]uint16{
 	"left": 123, "right": 124, "down": 125, "up": 126,
 }
 
-// ParseShortcut reads "cmd+shift+]" style text: modifiers, then one key.
-func ParseShortcut(s string) (Shortcut, error) {
+// Fields splits shortcut text into the parts it presses, trimmed and lower
+// case: modifiers, then one key. A trailing "++" is the + key itself, which
+// is shift and =, so "cmd++" is cmd, shift, =. Everything that reads a
+// shortcut (posting it, showing it) goes through here.
+func Fields(s string) []string {
 	parts := strings.Split(strings.ToLower(strings.TrimSpace(s)), "+")
-	// "cmd++" means cmd and the = key's + ... keep it simple: a trailing empty
-	// part after a + is the + key itself, which is shift+=.
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
 	if n := len(parts); n >= 2 && parts[n-1] == "" && parts[n-2] == "" {
 		parts = append(parts[:n-2], "shift", "=")
 	}
+	return parts
+}
+
+// ParseShortcut reads "cmd+shift+]" style text: modifiers, then one key.
+func ParseShortcut(s string) (Shortcut, error) {
+	parts := Fields(s)
 	if len(parts) == 1 {
-		if sc, ok := lone[strings.TrimSpace(parts[0])]; ok {
+		if sc, ok := lone[parts[0]]; ok {
 			return sc, nil
 		}
 	}
 	var sc Shortcut
 	for i, p := range parts {
-		p = strings.TrimSpace(p)
 		if i < len(parts)-1 {
 			m, ok := modifiers[p]
 			if !ok {

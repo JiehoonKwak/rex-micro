@@ -140,6 +140,9 @@ type Action struct {
 	// Held keeps the shortcut pressed for as long as the pad key is, so an
 	// app that times its hotkey (tap to toggle, hold to talk) sees a real press.
 	Held bool `toml:"held"`
+	// Label names what the action does for people, e.g. "Focus mode"; the
+	// keys overlay and the editor show it instead of the raw binding.
+	Label string `toml:"label"`
 }
 
 // KeyBinding is either a single Action (the press) or per-gesture actions.
@@ -265,6 +268,15 @@ func (d *Duration) UnmarshalText(b []byte) error {
 	}
 	d.Duration = v
 	return nil
+}
+
+// Caps names each control as printed on the pad (or where it sits), for
+// the editor and the keys overlay.
+var Caps = map[string]string{
+	"AG00": "Agent 1", "AG01": "Agent 2", "AG02": "Agent 3", "AG03": "Agent 4", "AG04": "Agent 5", "AG05": "Agent 6",
+	"ACT06": "FAST", "ACT07": "APPROVE", "ACT08": "REJECT", "ACT09": "SPLIT", "MIC": "MIC", "ACT12": "CODEX",
+	"ENC_CLK": "● dial press", "ENC_CW": "⟳ dial right", "ENC_CC": "⟲ dial left",
+	"STICK_UP": "▲ stick up", "STICK_DOWN": "▼ stick down", "STICK_LEFT": "◀ stick left", "STICK_RIGHT": "▶ stick right",
 }
 
 // Keys every layer may bind.
@@ -555,7 +567,7 @@ func (a *Action) validate(layers []Layer) error {
 
 func validBuiltin(b string, layers []Layer) error {
 	switch b {
-	case "none", "layer.next", "layer.prev", "agent.show", "agent.show_zoom", "agent.attention":
+	case "none", "layer.next", "layer.prev", "agent.show", "agent.show_zoom", "agent.attention", "keys.show":
 		return nil
 	}
 	if name, ok := strings.CutPrefix(b, "layer."); ok {
@@ -569,7 +581,7 @@ func validBuiltin(b string, layers []Layer) error {
 	if n, ok := strings.CutPrefix(b, "session."); ok && len(n) == 1 && n[0] >= '1' && n[0] <= '9' {
 		return nil
 	}
-	return fmt.Errorf("unknown builtin %q (use none, layer.next, layer.prev, layer.<name>, session.<1-9>, agent.show, agent.show_zoom, agent.attention)", b)
+	return fmt.Errorf("unknown builtin %q (use none, layer.next, layer.prev, layer.<name>, session.<1-9>, agent.show, agent.show_zoom, agent.attention, keys.show)", b)
 }
 
 // Resolve turns a config look into wire lighting, scaled by master brightness.

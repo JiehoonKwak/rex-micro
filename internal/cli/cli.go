@@ -112,6 +112,9 @@ func Main(args []string) int {
 		err = rawRPC(args[1:])
 	case "_access": // hidden: report this executable's own Input Monitoring state
 		return accessProbe(len(args) > 1 && args[1] == "--request")
+	case "_overlay": // hidden: the keys overlay window the daemon drives over stdin
+		macos.RunOverlay(os.Stdin)
+		return 0
 	case "_trusted": // hidden: exit 0 when this executable has Accessibility
 		if macos.Trusted() {
 			return 0

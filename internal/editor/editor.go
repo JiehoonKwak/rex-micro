@@ -317,7 +317,7 @@ func (m *Model) assign(g string, a *config.Action) {
 	if !empty {
 		text = b.TOML()
 	}
-	what := fmt.Sprintf("%s %s: %s", key, g, describe(a))
+	what := fmt.Sprintf("%s %s: %s", key, g, engine.Brief(a))
 	if a == nil {
 		what = fmt.Sprintf("%s %s cleared", key, g)
 	}
@@ -334,37 +334,6 @@ func (m *Model) assign(g string, a *config.Action) {
 		}
 		return d.SetKey(m.layer, key, text)
 	})
-}
-
-// describe names an action briefly for the screen.
-func describe(a *config.Action) string {
-	if a == nil {
-		return "-"
-	}
-	switch a.Kind() {
-	case "builtin":
-		switch b := a.Builtin; {
-		case b == "none":
-			return "nothing"
-		case b == "agent.show":
-			return "show agent"
-		case b == "agent.show_zoom":
-			return "show agent, zoomed"
-		case b == "agent.attention":
-			return "most urgent agent"
-		case b == "layer.next" || b == "layer.prev":
-			return map[string]string{"layer.next": "next layer", "layer.prev": "previous layer"}[b]
-		case strings.HasPrefix(b, "layer."):
-			return "layer " + strings.TrimPrefix(b, "layer.")
-		case strings.HasPrefix(b, "session."):
-			return "session " + strings.TrimPrefix(b, "session.")
-		}
-	case "action":
-		if len(a.Args) == 0 {
-			return a.Action
-		}
-	}
-	return engine.Summary(a)
 }
 
 // Update handles one message.

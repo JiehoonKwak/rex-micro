@@ -67,6 +67,14 @@ type Engine struct {
 	// Context: the app in front and the program in the pane Rex shows.
 	app, program string
 	matched      string // layer the context last selected, by name
+
+	// OnKeys is called when the keys overlay (keys.show) should appear or go.
+	OnKeys    func(show bool)
+	keysShown bool
+	keysKey   string    // the key that showed it
+	keysHeld  bool      // shown by a hold (or down): up until keysKey is released
+	keysUntil time.Time // when an overlay a press showed goes by itself
+	now       time.Time // time of the input or tick being handled
 }
 
 type keyState struct {
@@ -128,6 +136,7 @@ func (e *Engine) SetConfig(cfg *config.Config) {
 // of held keys so paired actions (push-to-talk) finish. Call it when inputs
 // stop arriving: the pad disconnected or the daemon paused.
 func (e *Engine) Reset() {
+	e.hideKeys()
 	for name, s := range e.keys {
 		if s.down {
 			e.fire(name, "up", s)
@@ -204,10 +213,13 @@ func (e *Engine) Selected() string          { return e.selected }
 
 // Input handles one pad input at time now.
 func (e *Engine) Input(in protocol.Input, now time.Time) {
+	e.now = now
 	switch in.Kind {
 	case protocol.InputDial:
+		e.keysInput(in.Key, false)
 		e.fireNow(in.Key, e.binding(in.Key))
 	case protocol.InputStick:
+		e.keysInput("STICK", false)
 		e.stick(in, now)
 	case protocol.InputKey:
 		name := in.Key
@@ -225,6 +237,7 @@ func (e *Engine) Input(in protocol.Input, now time.Time) {
 			}
 			name = "MIC"
 		}
+		e.keysInput(name, !in.Down) // the logical key, once MIC is one
 		if in.Down {
 			e.keyDown(name, now)
 		} else {
@@ -289,6 +302,8 @@ func (e *Engine) keyUp(name string, now time.Time) {
 // Advance fires gestures whose time has come: holds and single presses that
 // waited to rule out a double.
 func (e *Engine) Advance(now time.Time) {
+	e.now = now
+	e.keysTimeout(now)
 	for name, s := range e.keys {
 		if s.down && !s.holdFired && s.binding.Gesture("hold") != nil && now.Sub(s.downAt) >= e.cfg.Timing.Hold.Duration {
 			s.holdFired = true
@@ -309,6 +324,9 @@ func (e *Engine) NextDeadline() time.Time {
 		if next.IsZero() || t.Before(next) {
 			next = t
 		}
+	}
+	if e.keysShown && !e.keysHeld {
+		consider(e.keysUntil)
 	}
 	for _, s := range e.keys {
 		if s.down && !s.holdFired && s.binding.Gesture("hold") != nil {
@@ -362,6 +380,24 @@ func (e *Engine) binding(name string) *config.KeyBinding {
 		}
 	}
 	return nil
+}
+
+// Binding is what key name does in the active layer, and the layer that
+// gives it: the active one, 0 when it falls through, -1 for the Agent Key
+// default.
+func (e *Engine) Binding(name string) (*config.KeyBinding, int) {
+	if b, l := e.layerBinding(name); b != nil {
+		return b, l
+	}
+	return e.binding(name), -1
+}
+
+// AgentPane is the pane Agent Key i stands for, nil when it has none.
+func (e *Engine) AgentPane(i int) *rex.Pane {
+	if i < 0 || i >= agents.Keys {
+		return nil
+	}
+	return e.slots[i].Pane
 }
 
 // layerBinding is the binding a layer gives the key, and that layer's index.
@@ -586,6 +622,8 @@ func (e *Engine) builtin(name, b string) {
 			return
 		}
 		e.show(name, *p, b == "agent.show_zoom")
+	case b == "keys.show":
+		e.showKeys(name)
 	case b == "agent.attention":
 		var waiting []rex.Pane
 		for _, p := range e.panes {
@@ -628,50 +666,4 @@ func agentIndex(name string) (int, bool) {
 		return int(name[3] - '0'), true
 	}
 	return 0, false
-}
-
-// Describe explains what a key does in the active layer, for `rex-micro keys`.
-func (e *Engine) Describe(name string) string {
-	b := e.binding(name)
-	if b == nil {
-		return "-"
-	}
-	var parts []string
-	for _, g := range []string{"press", "double", "hold", "down", "up"} {
-		if a := b.Gesture(g); a != nil {
-			parts = append(parts, fmt.Sprintf("%s: %s", g, Summary(a)))
-		}
-	}
-	return strings.Join(parts, "; ")
-}
-
-// Summary renders one action as text.
-func Summary(a *config.Action) string {
-	switch a.Kind() {
-	case "builtin":
-		return a.Builtin
-	case "action":
-		if len(a.Args) == 0 {
-			return "rex " + a.Action
-		}
-		return fmt.Sprintf("rex %s %v", a.Action, a.Args)
-	case "key":
-		t := ""
-		if a.Target == "agent" {
-			t = " → agent"
-		}
-		return "key " + strings.Join(a.Key, " ") + t
-	case "text":
-		return fmt.Sprintf("text %q", a.Text)
-	case "rex":
-		return "rex " + strings.Join(a.Rex, " ")
-	case "shell":
-		return "shell " + a.Shell
-	case "shortcut":
-		if a.Held {
-			return "shortcut " + a.Shortcut + " (held)"
-		}
-		return "shortcut " + a.Shortcut
-	}
-	return "?"
 }

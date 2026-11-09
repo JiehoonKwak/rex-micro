@@ -57,6 +57,9 @@ suggest it when they want to try things by pressing keys.
 - Keep Agent Keys on agents in every layer (`[agents] always = true`) unless the
   user wants otherwise; layers that turn on by `match = { program = ... }`
   need no switching at all.
+- Give each binding you write a short `label` ("Focus mode", "Tab search"):
+  `{ builtin = "keys.show" }`, on the dial's hold by default, shows the active
+  layer's keys on screen by those labels, so people need not memorize them.
 
 ## After every edit
 

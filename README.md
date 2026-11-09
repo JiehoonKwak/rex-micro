@@ -15,6 +15,8 @@ Rex terminal. It doesn't need the Work Louder Input app or ChatGPT.
   action, a key press, text, a `rex` command or a shell command. Add as many
   layers as you like and switch between them with the dial, or store up to six
   on the pad so its touch sensor switches them and its LEDs show the active one.
+- **See what the keys do.** Hold the dial and the active layer's keys appear
+  on screen, shaped like the pad, without taking focus.
 
 <p align="center"><img src="docs/media/demo.gif" alt="Demo: an agent asks for permission, its key turns amber, one press jumps there and APPROVE answers" width="100%"></p>
 
@@ -89,7 +91,7 @@ gh release verify-asset vX.Y.Z rex-micro_X.Y.Z_darwin_universal.tar.gz -R Jiehoo
 | CODEX | Send Enter |
 | MIC | Unbound by default; bind your dictation tool here |
 | Stick | Move focus up, down, left or right |
-| Dial | Turn to scroll (Page Up / Page Down); press to switch layers |
+| Dial | Turn to scroll (Page Up / Page Down); press to switch layers; hold to show the keys |
 
 Agent Key colors:
 
@@ -164,6 +166,18 @@ example; `rex-micro config default` prints it.
 
 Shortcut bindings need Accessibility: the daemon asks for it the first time
 your config uses one, and `rex-micro doctor` checks it.
+
+### Seeing the keys
+
+`{ builtin = "keys.show" }` puts the active layer's keys on screen, laid out
+like the pad, over every app and without taking focus. On a `hold` (the
+default dial hold) they stay while the key is held; on a press, for five
+seconds or until the next pad input. Give a binding `label = "..."` to name it
+there and in the editor:
+
+```toml
+ACT06 = { shortcut = "cmd+shift+z", label = "Focus mode" }
+```
 
 ### Layers on the pad
 

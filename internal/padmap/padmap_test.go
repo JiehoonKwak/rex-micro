@@ -16,7 +16,7 @@ type pad struct {
 }
 
 func (p *pad) ReadFile(string) (string, error) { return p.file, nil }
-func (p *pad) WriteFile(_, data string) error   { p.file = data; p.writes++; return nil }
+func (p *pad) WriteFile(_, data string) error  { p.file = data; p.writes++; return nil }
 
 const inputKeymap = `{"version":1,"profiles":[{"layers":[{"id":0,"name":"Layer 1"},{"id":3,"name":"General"}]}],"linkedApps":[{"id":0,"process":"com.brave.Browser"}]}`
 

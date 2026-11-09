@@ -14,10 +14,8 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/JiehoonKwak/rex-micro/internal/agents"
@@ -80,12 +78,12 @@ type Status struct {
 }
 
 type request struct {
-	Cmd   string `json:"cmd"`
-	fw    *micro.Status
-	pad   *padDone
+	Cmd     string `json:"cmd"`
+	fw      *micro.Status
+	pad     *padDone
 	padLost error // a layer notice the pad never took
-	reply chan any
-	done  chan struct{} // closed when a pausing client disconnects
+	reply   chan any
+	done    chan struct{} // closed when a pausing client disconnects
 }
 
 type daemon struct {
@@ -132,49 +130,15 @@ type daemon struct {
 	padToldAt time.Time
 	padWant   int     // the layer last sent to the pad
 	padIO     padPort // the pad, as the worker uses it
+
+	// The keys overlay (overlay.go).
+	keys    keysView
+	keysOut chan string
 }
 
 type snapshot struct {
 	panes []rex.Pane
 	err   error
-}
-
-// Options are the daemon's dependencies; tests replace the device and Rex.
-type Options struct {
-	ConfigPath string
-	Logger     *log.Logger
-	Device     hid.Device // nil opens the real pad
-	Runner     rex.Runner // nil runs the rex CLI
-	Stop       <-chan struct{}
-	// Update reports true after installing a newer executable; the daemon
-	// then exits so launchd restarts it. Nil disables the check.
-	Update func() (bool, error)
-	// FrontApp names the app in front; nil asks macOS.
-	FrontApp func() string
-	// Shortcut sends a key combination; nil posts it through macOS. Trusted
-	// reports Accessibility for it; nil asks macOS.
-	Shortcut func(macos.Shortcut) error
-	// HoldShortcut presses or releases a held shortcut; nil asks macOS.
-	HoldShortcut func(macos.Shortcut, bool) error
-	Trusted      func() bool
-	// FreshTrusted asks a new process whether Accessibility is granted.
-	// macOS does not tell a running process about a grant, so the daemon
-	// restarts when a fresh check succeeds. Nil runs `rex-micro _trusted`.
-	FreshTrusted func() bool
-}
-
-// Run starts the daemon and blocks until SIGINT/SIGTERM.
-func Run(cfgPath string, logger *log.Logger, update func() (bool, error)) error {
-	if hid.CheckAccess() != hid.AccessGranted {
-		logger.Printf("asking macOS for Input Monitoring; allow rex-micro in System Settings > Privacy & Security > Input Monitoring")
-		hid.RequestAccess()
-	}
-	dev := openWaiting(logger)
-	stop := make(chan struct{})
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	go func() { <-sig; close(stop) }()
-	return Start(Options{ConfigPath: cfgPath, Logger: logger, Device: dev, Runner: rex.ExecRunner{Path: RexPath()}, Stop: stop, Update: update})
 }
 
 // Start runs the daemon with explicit dependencies until opts.Stop closes.
@@ -198,7 +162,7 @@ func Start(opts Options) error {
 	defer ln.Close()
 	defer os.Remove(sock)
 
-	exe, _ := os.Executable()
+	exe := opts.Self
 	if opts.FrontApp == nil {
 		opts.FrontApp = macos.FrontApp
 	}
@@ -211,7 +175,7 @@ func Start(opts Options) error {
 	requestTrust := func() {} // tests supply Trusted and never see a prompt
 	if opts.Trusted == nil {
 		opts.Trusted, requestTrust = macos.Trusted, func() { macos.RequestTrust() }
-		if opts.FreshTrusted == nil {
+		if opts.FreshTrusted == nil && exe != "" {
 			opts.FreshTrusted = func() bool { return exec.Command(exe, "_trusted").Run() == nil }
 		}
 	}
@@ -234,6 +198,7 @@ func Start(opts Options) error {
 		padJobs:      make(chan padJob, 1),
 		padTell:      make(chan int, 1),
 		padSeen:      make(chan int, 1),
+		keysOut:      make(chan string, 1),
 		status:       Status{PID: os.Getpid(), Executable: exe, Config: cfgPath},
 	}
 	d.padIO = d.pad
@@ -248,10 +213,15 @@ func Start(opts Options) error {
 		return ""
 	}
 	d.eng = engine.New(cfg, executor{rex: d.rex, post: opts.Shortcut, hold: opts.HoldShortcut, front: opts.FrontApp, program: program, logger: logger}, d.enqueue, logger.Printf)
-	d.eng.OnLayer = func(i int) { d.render(true); d.tellPad(i) }
+	d.eng.OnLayer = d.onLayer
+	d.eng.OnKeys = d.onKeys
+	helper := &overlayHelper{exe: exe, logf: logger.Printf}
+	d.keys = helper
+	d.warmKeys()
 	d.askTrust(logger)
 	go d.runEffects()
 	go d.padWorker(opts.Stop)
+	go d.keysWorker(opts.Stop)
 	watchCtx, stopWatch := context.WithCancel(context.Background())
 	go d.watchRex(watchCtx)
 	go d.pollFront(opts.Stop)
@@ -276,6 +246,7 @@ func Start(opts Options) error {
 	}
 	d.effects.close()
 	d.lightsOff()
+	helper.stop()
 	d.pad.Close()
 	return err
 }
@@ -439,6 +410,16 @@ func (d *daemon) grantedSinceStart() bool {
 }
 
 // render sends the Agent Key and backlight lighting when it changed.
+// onLayer follows a layer change: lights, the pad's own layer and the keys
+// overlay, which redraws for the new layer while it is up.
+func (d *daemon) onLayer(i int) {
+	d.render(true)
+	d.tellPad(i)
+	if d.eng.KeysShown() {
+		d.onKeys(true)
+	}
+}
+
 func (d *daemon) render(force bool) {
 	if d.pauses > 0 || !d.status.Connected {
 		return
@@ -522,6 +503,7 @@ func (d *daemon) reload(logger *log.Logger) error {
 	}
 	d.cfg = cfg
 	d.eng.SetConfig(cfg)
+	d.warmKeys()
 	d.askTrust(logger)
 	d.slots = d.assigner.Assign(d.panes, cfg.Agents)
 	d.eng.SetPanes(d.panes, d.slots)

@@ -105,6 +105,9 @@ func (a *Action) TOML() string {
 	if a.Builtin != "" {
 		f = append(f, "builtin = "+Quote(a.Builtin))
 	}
+	if a.Label != "" {
+		f = append(f, "label = "+Quote(a.Label))
+	}
 	return inline(f)
 }
 

@@ -5,6 +5,9 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/JiehoonKwak/rex-micro/internal/config"
+	"github.com/JiehoonKwak/rex-micro/internal/engine"
 )
 
 // slot is one bindable control, in the order the arrow keys walk them.
@@ -13,14 +16,21 @@ type slot struct {
 	row        int // diagram row, for up/down
 }
 
-var slots = []slot{
-	{"ENC_CC", "⟲ dial left", 0}, {"ENC_CLK", "● dial press", 0}, {"ENC_CW", "⟳ dial right", 0},
-	{"AG00", "Agent 1", 0}, {"AG01", "Agent 2", 0},
-	{"STICK_UP", "▲ stick up", 0}, {"STICK_RIGHT", "▶ stick right", 0}, {"STICK_DOWN", "▼ stick down", 0}, {"STICK_LEFT", "◀ stick left", 0},
-	{"AG02", "Agent 3", 1}, {"AG03", "Agent 4", 1}, {"AG04", "Agent 5", 1}, {"AG05", "Agent 6", 1},
-	{"ACT06", "FAST", 2}, {"ACT07", "APPROVE", 2}, {"ACT08", "REJECT", 2}, {"ACT09", "SPLIT", 2},
-	{"MIC", "MIC", 3}, {"ACT12", "CODEX", 3},
-}
+var slots = func() []slot {
+	rows := [][]string{
+		{"ENC_CC", "ENC_CLK", "ENC_CW", "AG00", "AG01", "STICK_UP", "STICK_RIGHT", "STICK_DOWN", "STICK_LEFT"},
+		{"AG02", "AG03", "AG04", "AG05"},
+		{"ACT06", "ACT07", "ACT08", "ACT09"},
+		{"MIC", "ACT12"},
+	}
+	var out []slot
+	for r, keys := range rows {
+		for _, k := range keys {
+			out = append(out, slot{k, config.Caps[k], r})
+		}
+	}
+	return out
+}()
 
 func slotIndex(key string) int {
 	for i, s := range slots {
@@ -80,7 +90,7 @@ func (m *Model) short(key string) (string, string) {
 	}
 	for _, g := range gestures {
 		if a := b.Gesture(g); a != nil {
-			s := describe(a)
+			s := engine.Brief(a)
 			if g != "press" {
 				s = g + ": " + s
 			}
@@ -201,7 +211,7 @@ func (m *Model) details() string {
 		val := "—"
 		if b != nil {
 			if a := b.Gesture(g); a != nil {
-				val = describe(a)
+				val = engine.Brief(a)
 			}
 		}
 		line := fmt.Sprintf("%-7s %s", g, trunc(val, 44))

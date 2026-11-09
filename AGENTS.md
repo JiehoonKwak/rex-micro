@@ -26,6 +26,11 @@ Work Louder Input app. It is a public showcase for Rex, so behaviour belongs in
   README's Configuration section.
 - Tests must catch a planted fault: a test that still passes with the behaviour
   broken does not count.
+- Code never runs its own executable from `os.Executable()` outside `Run`:
+  under `go test` that is the test binary, which would rerun the tests
+  recursively until the machine fails. The daemon runs `_overlay` and
+  `_trusted` only through `Options.Self`, and the daemon tests' `TestMain`
+  fails any run that starts itself.
 - macOS permissions follow the signing identity. Release builds are signed by
   `scripts/build-release.sh` with the self-signed identity from
   `scripts/make-signing-cert.sh` (see `docs/releasing.md`); never commit the
