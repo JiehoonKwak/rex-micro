@@ -158,13 +158,17 @@ func status(asJSON bool) error {
 		}
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "\nKEY\tSTATE\tAGENT\tSESSION\tPANE")
+	fmt.Fprintln(w, "\nKEY\tSTATE\tAGENT\tHOST\tSESSION\tPANE")
 	for _, sl := range s.Slots {
 		mark := ""
 		if sl.Block != "" && sl.Block == s.Selected {
 			mark = " *"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s%s\n", sl.Key, sl.State, dash(sl.App), dash(sl.Session), shortBlock(sl.Block), mark)
+		host := sl.Host
+		if host == "" && sl.Block != "" {
+			host = "this Mac"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s%s\n", sl.Key, sl.State, dash(sl.App), dash(host), dash(sl.Session), shortBlock(sl.Block), mark)
 	}
 	return w.Flush()
 }

@@ -44,6 +44,7 @@ type SlotStatus struct {
 	Key     string `json:"key"`
 	State   string `json:"state"`
 	Block   string `json:"block,omitempty"`
+	Host    string `json:"host,omitempty"` // "" for this Mac
 	Session string `json:"session,omitempty"`
 	Label   string `json:"label,omitempty"`
 	App     string `json:"app,omitempty"`
@@ -203,7 +204,7 @@ func Start(opts Options) error {
 		logger:       logger,
 		cfgPath:      cfgPath,
 		cfg:          cfg,
-		rex:          &rex.Client{Runner: opts.Runner, App: cfg.Rex.App},
+		rex:          &rex.Client{Runner: opts.Runner, App: cfg.Rex.App, Logf: logger.Printf},
 		pad:          micro.New(opts.Device),
 		refresh:      make(chan struct{}, 1),
 		rewake:       make(chan struct{}, 1),
@@ -555,7 +556,7 @@ func (d *daemon) snapshotStatus() Status {
 	for i, sl := range d.slots {
 		ss := SlotStatus{Key: fmt.Sprintf("AG%02d", i), State: sl.State}
 		if sl.Pane != nil {
-			ss.Block, ss.Session, ss.Label, ss.App = sl.Pane.Block, sl.Pane.SessionLabel, sl.Pane.Label, sl.Pane.App
+			ss.Block, ss.Host, ss.Session, ss.Label, ss.App = sl.Pane.Block, sl.Pane.Host, sl.Pane.SessionLabel, sl.Pane.Label, sl.Pane.App
 		}
 		s.Slots = append(s.Slots, ss)
 	}

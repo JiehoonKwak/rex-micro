@@ -8,9 +8,12 @@ app = ""          # Rex app client label or ID; "" picks the Rex app on this Mac
 poll = "30s"      # full re-read in case Rex missed an event; also the retry while Rex is down
 
 [agents]
-# Which panes the six Agent Keys follow:
+# Which panes the six Agent Keys follow. Like the Rex sidebar, they cover this
+# Mac's Rex and every host in `rex hosts`; a host that does not answer is
+# skipped until it does.
 #   auto     - panes running an agent (Claude Code, Codex, ...), in session order
-#   sessions - Rex sessions 1-6; the key shows the most urgent agent in that session
+#   sessions - Rex sessions 1-6 (this Mac's first, then each host's); the key
+#              shows the most urgent agent in that session
 #   slots    - the panes named in `slots`, by label or block ID (block IDs change
 #              when Rex restarts; labels do not)
 mode = "auto"

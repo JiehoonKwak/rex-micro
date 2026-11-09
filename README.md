@@ -6,7 +6,8 @@ Use a [Work Louder Codex Micro](https://worklouder.cc) as a controller for the
 Rex terminal. It doesn't need the Work Louder Input app or ChatGPT.
 
 - **Agent Keys follow your agents.** Each of the six keys tracks a pane
-  running Claude Code, Codex or another agent, and shows its state in color.
+  running Claude Code, Codex or another agent, on this Mac or any Rex host it
+  connects to, and shows its state in color.
   Press a key to jump to that agent's session and pane, or double-press to also zoom it.
 - **Answer from the pad.** APPROVE sends Enter and REJECT sends Escape to the
   focused pane. The stick moves focus between panes, and the dial scrolls.
