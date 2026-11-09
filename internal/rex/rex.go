@@ -325,14 +325,15 @@ func (c *Client) Perform(action string, args map[string]string) error {
 	return err
 }
 
-// Show brings a pane into view in the app: select its session and window,
-// then focus the block.
+// Show brings a pane into view in the app: focus the block on the server,
+// then have the app select its session and window. The order matters: the
+// app does not follow a focus change in a session it already shows, so
+// focusing after the select left the old pane on screen.
 func (c *Client) Show(p Pane) error {
-	if err := c.Perform("session.select", map[string]string{"session_id": p.Session, "window_id": p.Window}); err != nil {
+	if _, err := c.run(nil, "focus", "-s", p.Session, p.Block); err != nil {
 		return err
 	}
-	_, err := c.run(nil, "focus", "-s", p.Session, p.Block)
-	return err
+	return c.Perform("session.select", map[string]string{"session_id": p.Session, "window_id": p.Window})
 }
 
 // Zoom sets a block's zoom.
