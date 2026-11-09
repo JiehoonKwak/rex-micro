@@ -36,4 +36,9 @@ Work Louder Input app. It is a public showcase for Rex, so behaviour belongs in
   `scripts/make-signing-cert.sh` (see `docs/releasing.md`); never commit the
   `.p12` or its password.
 - README and docs are English, short and plain.
+- Verify in the real Rex app before reporting a change to keys, Agent Keys,
+  layers or Rex following as done:
+  [verify-rex-micro](.agents/skills/verify-rex-micro/SKILL.md) drives keys
+  with `rex-micro press` and judges by what Rex shows, not by asking the user
+  to press the pad.
 
