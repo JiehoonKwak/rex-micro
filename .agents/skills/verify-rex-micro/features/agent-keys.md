@@ -1,6 +1,6 @@
 # Agent Keys reach the right pane
 
-**Covers:** `internal/daemon/`, `internal/engine/`, `internal/agents/`, `internal/rex/`, `internal/cli/cli.go`, `.agents/skills/verify-rex-micro/scripts/check_rex_micro.py` @ unconfirmed
+**Covers:** `internal/daemon/`, `internal/engine/`, `internal/agents/`, `internal/rex/`, `internal/cli/cli.go`, `.agents/skills/verify-rex-micro/scripts/check_rex_micro.py` @ a4da753
 **Tier:** script
 **Positive control:** a live press of a key whose pane is in another session passes, and `judge-controls` accepts the recorded good results.
 **Negative control:** `judge-controls` must reject a pane focused but its session not shown, the wrong pane focused, a same-ID session on another host, an Agent Key list that drops another host's agent (the v0.1.3 regression) and a key naming the wrong host.
