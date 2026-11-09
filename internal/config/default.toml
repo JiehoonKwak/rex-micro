@@ -74,7 +74,8 @@ layers = "off"
 # A layer you pick by hand stays until you switch apps or the program changes;
 # then the matching layer (or the first) comes back.
 # A layer that binds an Agent Key lights it in the layer color.
-# `rex-micro edit` edits all of this on screen.
+# `rex-micro edit` edits all of this on screen; `rex-micro press KEY` (with
+# --double or --hold) makes the running daemon handle a key as a pad press.
 #
 # Key names:  AG00-AG05 (Agent Keys), ACT06-ACT09, MIC (the wide key), ACT12,
 #             ENC_CLK (dial press), ENC_CW / ENC_CC (dial turns),

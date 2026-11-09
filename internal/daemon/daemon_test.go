@@ -458,7 +458,7 @@ func TestShortcutSkippedWhenAnotherAppCameToFront(t *testing.T) {
 	front := "TextEdit"
 	program := ""
 	x := executor{post: func(macos.Shortcut) error { posted++; return nil }, front: func() string { return front },
-		program: func() string { return program }, logger: log.New(testWriter{t}, "", 0)}
+		program: func() string { return program }, logf: t.Logf}
 	if err := x.Shortcut("cmd+w", "Google Chrome", ""); !errors.Is(err, engine.ErrSkipped) || posted != 0 {
 		t.Fatalf("posted %d, err %v", posted, err)
 	}

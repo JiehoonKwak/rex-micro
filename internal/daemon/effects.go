@@ -3,7 +3,6 @@ package daemon
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"sync"
@@ -175,7 +174,7 @@ type executor struct {
 	hold    func(sc macos.Shortcut, down bool) error
 	front   func() string
 	program func() string // in the Rex pane on screen, as last seen
-	logger  *log.Logger
+	logf    func(string, ...any)
 }
 
 // Shortcut posts combo unless the app it was meant for has left the front
@@ -196,11 +195,11 @@ func (x executor) Shortcut(combo, app, program string) error {
 // has left the front while the effect waited.
 func (x executor) guard(combo, app, program string) error {
 	if now := x.front(); app != "" && config.AppName(now) != config.AppName(app) {
-		x.logger.Printf("shortcut %s was for %s, but %s is in front now; skipped", combo, app, now)
+		x.logf("shortcut %s was for %s, but %s is in front now; skipped", combo, app, now)
 		return engine.ErrSkipped
 	}
 	if now := x.program(); program != "" && now != program {
-		x.logger.Printf("shortcut %s was for %s, but the Rex pane now runs %s; skipped", combo, program, now)
+		x.logf("shortcut %s was for %s, but the Rex pane now runs %s; skipped", combo, program, now)
 		return engine.ErrSkipped
 	}
 	return nil

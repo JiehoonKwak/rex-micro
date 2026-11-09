@@ -220,6 +220,7 @@ Then ask your agent something like "make the dial switch Rex tabs on a second la
 | `rex-micro edit` | Edit bindings and layers on screen |
 | `rex-micro doctor` | Check Rex, the pad, permissions, the config and conflicting apps |
 | `rex-micro status` | Show the pad connection, the active layer and the pane each Agent Key follows |
+| `rex-micro press KEY` | Handle a key as if pressed on the pad (`--double`, `--hold`), to try a binding without the pad |
 | `rex-micro test` | Guided hardware check: press each key and confirm the lights (`--lights` for the lights only) |
 | `rex-micro monitor` | Print raw pad events |
 | `rex-micro lights demo` | Play the Agent Key colors (useful for recordings) |

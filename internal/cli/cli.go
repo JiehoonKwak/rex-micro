@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"text/tabwriter"
 
 	rexmicro "github.com/JiehoonKwak/rex-micro"
@@ -35,6 +36,8 @@ Daemon:
   service uninstall    stop and remove the launchd service
   status [--json]      what the running daemon sees: pad, layer, Agent Keys
   reload               reload the config now (the daemon also reloads on save)
+  press KEY [--double|--hold] [--json]
+                       handle KEY as if pressed on the pad, then wait for its actions
 
 Setup and checks:
   doctor               check Rex, the pad, permissions and the config
@@ -88,6 +91,8 @@ func Main(args []string) int {
 				fmt.Println("reloaded")
 			}
 		}
+	case "press":
+		err = press(args[1:])
 	case "doctor":
 		return doctor()
 	case "test":
@@ -184,6 +189,57 @@ func status(asJSON bool) error {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s%s\n", sl.Key, sl.State, dash(sl.App), dash(host), dash(sl.Session), shortBlock(sl.Block), mark)
 	}
 	return w.Flush()
+}
+
+// press makes the running daemon handle a key exactly as a pad press, so a
+// binding can be exercised in the real Rex app without the pad.
+func press(args []string) error {
+	key, gesture, asJSON := "", "press", false
+	for _, a := range args {
+		switch a {
+		case "--double":
+			gesture = "double"
+		case "--hold":
+			gesture = "hold"
+		case "--json":
+			asJSON = true
+		default:
+			if key != "" || strings.HasPrefix(a, "-") {
+				return fmt.Errorf("usage: rex-micro press KEY [--double|--hold] [--json]")
+			}
+			key = a
+		}
+	}
+	if key == "" {
+		return fmt.Errorf("usage: rex-micro press KEY [--double|--hold] [--json]; keys are %s", strings.Join(config.KeyNames, ", "))
+	}
+	out, err := daemon.Press(key, gesture)
+	if err != nil {
+		return err
+	}
+	if out.Error == "unknown command press" {
+		return errors.New("the running daemon predates `press`; let it pick up this version (brew upgrade rex-micro, then wait 30 seconds)")
+	}
+	if asJSON {
+		b, _ := json.MarshalIndent(out, "", "  ")
+		fmt.Println(string(b))
+	} else {
+		fmt.Printf("%s %s on layer %s: %s\n", out.Key, out.Gesture, dash(out.Layer), dash(out.Binding))
+		if a := out.Agent; a != nil {
+			host := a.Host
+			if host == "" {
+				host = "this Mac"
+			}
+			fmt.Printf("agent:  %s (%s) on %s, session %s, pane %s\n", dash(a.App), a.State, host, dash(a.Session), a.Block)
+		}
+		for _, l := range out.Log {
+			fmt.Println("log:   ", l)
+		}
+	}
+	if out.Error != "" {
+		return errors.New(out.Error)
+	}
+	return nil
 }
 
 func dash(s string) string {

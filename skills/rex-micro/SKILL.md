@@ -65,8 +65,14 @@ suggest it when they want to try things by pressing keys.
 
 Run `rex-micro config check`. It names the bad setting (for example
 `layer "tools".keys.ACT10: unknown key (the wide key is MIC)`); fix it before
-finishing. Then confirm with `rex-micro keys`, and ask the user to press the key
-when the change matters.
+finishing. Then confirm with `rex-micro keys`, and exercise the key yourself:
+`rex-micro press KEY` (add `--double` or `--hold` for those gestures) makes
+the running daemon handle it exactly as a pad press on the active layer, waits
+for its actions, and prints the binding, an Agent Key's target pane and any
+error. Check the outcome in Rex (for an Agent Key, `rex session inspect` shows
+the focused pane) rather than asking the user to press it. Keys that send
+Enter, Escape or close a pane act on real panes; press them only when that is
+what you mean to do.
 
 ## When the pad does nothing
 

@@ -21,7 +21,6 @@ import (
 	"github.com/JiehoonKwak/rex-micro/internal/agents"
 	"github.com/JiehoonKwak/rex-micro/internal/config"
 	"github.com/JiehoonKwak/rex-micro/internal/engine"
-	"github.com/JiehoonKwak/rex-micro/internal/hid"
 	"github.com/JiehoonKwak/rex-micro/internal/macos"
 	"github.com/JiehoonKwak/rex-micro/internal/micro"
 	"github.com/JiehoonKwak/rex-micro/internal/protocol"
@@ -37,48 +36,12 @@ func SocketPath() string {
 	return filepath.Join(home, "Library", "Application Support", "rex-micro", "daemon.sock")
 }
 
-// SlotStatus describes one Agent Key in Status.
-type SlotStatus struct {
-	Key     string `json:"key"`
-	State   string `json:"state"`
-	Block   string `json:"block,omitempty"`
-	Host    string `json:"host,omitempty"` // "" for this Mac
-	Session string `json:"session,omitempty"`
-	Label   string `json:"label,omitempty"`
-	App     string `json:"app,omitempty"`
-}
-
-// Status is what `rex-micro status` prints.
-type Status struct {
-	PID        int          `json:"pid"`
-	Executable string       `json:"executable"`
-	Access     string       `json:"input_monitoring"`
-	Connected  bool         `json:"connected"`
-	Transport  string       `json:"transport,omitempty"`
-	Firmware   string       `json:"firmware,omitempty"`
-	Battery    float64      `json:"battery,omitempty"`
-	Layer      string       `json:"layer"`
-	LayerIndex int          `json:"layer_index"`
-	Layers     []string     `json:"layers"`
-	Slots      []SlotStatus `json:"agent_keys"`
-	Selected   string       `json:"selected_agent,omitempty"`
-	Paused     bool         `json:"paused"`
-	Config     string       `json:"config"`
-	ConfigErr  string       `json:"config_error,omitempty"`
-	RexErr     string       `json:"rex_error,omitempty"`
-	LastErr    string       `json:"last_error,omitempty"`
-	// Foreign is when another app last changed the pad's lights (RFC 3339).
-	Foreign string `json:"foreign_lighting,omitempty"`
-	// Accessibility is granted or denied; shortcut bindings need it.
-	Accessibility string `json:"accessibility"`
-	FrontApp      string `json:"front_app,omitempty"`
-	Program       string `json:"program,omitempty"` // in the pane Rex shows
-	// PadLayers is the pad's own layers: off, syncing, sync or "error: ...".
-	PadLayers string `json:"pad_layers,omitempty"`
-}
-
 type request struct {
-	Cmd     string `json:"cmd"`
+	Cmd     string          `json:"cmd"`
+	Key     string          `json:"key,omitempty"`     // press
+	Gesture string          `json:"gesture,omitempty"` // press: press, double or hold
+	input   *protocol.Input // a synthesized pad input (press.go)
+	idle    chan bool       // asks whether the engine has gestures pending
 	fw      *micro.Status
 	pad     *padDone
 	padLost error // a layer notice the pad never took
@@ -115,6 +78,7 @@ type daemon struct {
 	freshTrusted func() bool // nil: never restart for a grant
 	requestTrust func()
 	effects      effectQueue
+	presses      pressLog
 	refresh      chan struct{}
 	fronts       chan string
 	snapshots    chan snapshot
@@ -212,7 +176,12 @@ func Start(opts Options) error {
 		}
 		return ""
 	}
-	d.eng = engine.New(cfg, executor{rex: d.rex, post: opts.Shortcut, hold: opts.HoldShortcut, front: opts.FrontApp, program: program, logger: logger}, d.enqueue, logger.Printf)
+	// Key actions log through logf, which a running `rex-micro press` also reads.
+	logf := func(format string, args ...any) {
+		logger.Printf(format, args...)
+		d.presses.add(fmt.Sprintf(format, args...))
+	}
+	d.eng = engine.New(cfg, executor{rex: d.rex, post: opts.Shortcut, hold: opts.HoldShortcut, front: opts.FrontApp, program: program, logf: logf}, d.enqueue, logf)
 	d.eng.OnLayer = d.onLayer
 	d.eng.OnKeys = d.onKeys
 	helper := &overlayHelper{exe: exe, logf: logger.Printf}
@@ -379,12 +348,17 @@ func (d *daemon) onPad(ev micro.Event, logger *log.Logger) {
 		d.foreignAt = now
 		d.status.Foreign = now.Format(time.RFC3339)
 	case ev.Input != nil:
-		if d.pauses > 0 {
-			return
-		}
-		d.eng.Input(*ev.Input, time.Now())
-		d.kick()
+		d.onInput(*ev.Input)
 	}
+}
+
+// onInput hands one pad input, real or from `rex-micro press`, to the engine.
+func (d *daemon) onInput(in protocol.Input) {
+	if d.pauses > 0 {
+		return
+	}
+	d.eng.Input(in, time.Now())
+	d.kick()
 }
 
 func (d *daemon) kick() {
@@ -525,6 +499,12 @@ func (d *daemon) onRequest(r request, logger *log.Logger) {
 			return
 		}
 		r.reply <- map[string]string{"ok": "reloaded"}
+	case r.input != nil:
+		d.onInput(*r.input)
+	case r.idle != nil:
+		r.idle <- d.eng.NextDeadline().IsZero()
+	case r.Cmd == "press":
+		d.onPress(r)
 	case r.Cmd == "pause":
 		if d.pauses == 0 {
 			d.eng.Reset()
@@ -555,33 +535,6 @@ func (d *daemon) onRequest(r request, logger *log.Logger) {
 			r.reply <- map[string]string{"error": "unknown command " + r.Cmd}
 		}
 	}
-}
-
-func (d *daemon) snapshotStatus() Status {
-	s := d.status
-	s.Access = hid.CheckAccess().String()
-	s.Accessibility = "denied"
-	if d.trusted() {
-		s.Accessibility = "granted"
-	}
-	s.LayerIndex = d.eng.Layer()
-	s.Layer = d.cfg.Layers[s.LayerIndex].Name
-	s.Layers = nil
-	for _, l := range d.cfg.Layers {
-		s.Layers = append(s.Layers, l.Name)
-	}
-	s.Slots = nil
-	for i, sl := range d.slots {
-		ss := SlotStatus{Key: fmt.Sprintf("AG%02d", i), State: sl.State}
-		if sl.Pane != nil {
-			ss.Block, ss.Host, ss.Session, ss.Label, ss.App = sl.Pane.Block, sl.Pane.Host, sl.Pane.SessionLabel, sl.Pane.Label, sl.Pane.App
-		}
-		s.Slots = append(s.Slots, ss)
-	}
-	s.Selected = d.eng.Selected()
-	s.Paused = d.pauses > 0
-	s.ConfigErr = d.cfgErr
-	return s
 }
 
 func (d *daemon) serve(ln net.Listener, logger *log.Logger) {
@@ -617,42 +570,3 @@ func (d *daemon) serve(ln net.Listener, logger *log.Logger) {
 		}()
 	}
 }
-
-// Call sends one command to a running daemon and decodes its reply into out.
-func Call(cmd string, out any) error {
-	c, err := net.DialTimeout("unix", SocketPath(), time.Second)
-	if err != nil {
-		return ErrNotRunning
-	}
-	defer c.Close()
-	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
-	if _, err := fmt.Fprintf(c, "{\"cmd\":%q}\n", cmd); err != nil {
-		return err
-	}
-	line, err := bufio.NewReader(c).ReadBytes('\n')
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(line, out)
-}
-
-// Pause stops a running daemon from acting on the pad until release is called.
-// It returns a no-op release when no daemon runs.
-func Pause() (release func(), err error) {
-	c, err := net.DialTimeout("unix", SocketPath(), time.Second)
-	if err != nil {
-		return func() {}, nil
-	}
-	if _, err := fmt.Fprintln(c, `{"cmd":"pause"}`); err != nil {
-		c.Close()
-		return nil, err
-	}
-	if _, err := bufio.NewReader(c).ReadBytes('\n'); err != nil {
-		c.Close()
-		return nil, err
-	}
-	return func() { c.Close() }, nil
-}
-
-// ErrNotRunning means no daemon answered on the socket.
-var ErrNotRunning = errors.New("rex-micro is not running (start it with `rex-micro service install`)")
