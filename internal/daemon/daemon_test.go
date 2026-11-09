@@ -53,8 +53,9 @@ func (f *fakeDevice) sent() []string {
 }
 
 type fakeRex struct {
-	mu    sync.Mutex
-	calls []string
+	mu       sync.Mutex
+	calls    []string
+	snapshot string // "" answers snapshotJSON
 }
 
 const snapshotJSON = `[{"session":"s1","session_label":"api","session_index":1,"window":"w1","block":"b1","label":"shell","focused":true,"app":"claude-code","state":"blocked","since":"2026-11-05T20:00:00+09:00"},
@@ -68,6 +69,8 @@ func (f *fakeRex) Run(_ context.Context, stdin []byte, args ...string) ([]byte, 
 	}
 	f.mu.Unlock()
 	switch {
+	case call == "do -" && f.snapshot != "":
+		return []byte(f.snapshot), nil
 	case call == "do -":
 		return []byte(snapshotJSON), nil
 	case call == "client ls --json":
@@ -292,6 +295,31 @@ func TestUnplugFinishesHeldKey(t *testing.T) {
 	eventually(t, "mic off", func() bool { return rx.has("mic-off") })
 }
 
+// The daemon runs outside any Rex pane, so an init.lua action pressed on the
+// pad must be told the session on screen; a client action needs no scope.
+// The shown session is on another host only when it is not this server's.
+func TestConfigActionRunsInTheSessionOnScreen(t *testing.T) {
+	cfg := "[[layer]]\nname = \"a\"\n[layer.keys]\n" +
+		"ACT06 = { action = \"focus_or_tab\", args = { direction = \"left\" } }\n" +
+		"ACT07 = { action = \"pane.zoom\" }\n"
+	rx := &fakeRex{snapshot: `[{"session":"s1","window":"w1","block":"b1","focused":true,"shown_at":"2026-11-09T10:00:00Z"},
+	 {"session":"s2","window":"w2","block":"b2","focused":true,"shown_at":"2026-11-09T11:00:00Z"}]`}
+	dev, _, stop := startDaemon(t, cfg, rx)
+	defer stop()
+	// Press until the first snapshot has arrived and the session is known.
+	eventually(t, "both actions", func() bool {
+		for _, k := range []string{"ACT06", "ACT07"} {
+			dev.events <- report(t, `{"m":"v.oai.hid","p":{"k":"`+k+`","act":1}}`)
+			dev.events <- report(t, `{"m":"v.oai.hid","p":{"k":"`+k+`","act":0}}`)
+		}
+		time.Sleep(100 * time.Millisecond)
+		return rx.inOrder("-C client:app do -s s2 focus_or_tab direction=left", "-C client:app do pane.zoom")
+	})
+	if rx.has("-C client:app do -s s2 pane.zoom") {
+		t.Fatal("a client action was scoped to a session")
+	}
+}
+
 // shortSocket returns a socket path under /tmp: macOS caps Unix socket paths
 // at 104 bytes, which t.TempDir() can exceed.
 func shortSocket(t *testing.T) string {
@@ -458,7 +486,7 @@ func TestShortcutSkippedWhenAnotherAppCameToFront(t *testing.T) {
 	front := "TextEdit"
 	program := ""
 	x := executor{post: func(macos.Shortcut) error { posted++; return nil }, front: func() string { return front },
-		program: func() string { return program }, logf: t.Logf}
+		shown: func() onScreen { return onScreen{program: program} }, logf: t.Logf}
 	if err := x.Shortcut("cmd+w", "Google Chrome", ""); !errors.Is(err, engine.ErrSkipped) || posted != 0 {
 		t.Fatalf("posted %d, err %v", posted, err)
 	}

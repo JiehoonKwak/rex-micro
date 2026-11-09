@@ -173,7 +173,7 @@ type executor struct {
 	post    func(macos.Shortcut) error
 	hold    func(sc macos.Shortcut, down bool) error
 	front   func() string
-	program func() string // in the Rex pane on screen, as last seen
+	shown   func() onScreen // the Rex pane on screen, as last seen
 	logf    func(string, ...any)
 }
 
@@ -198,7 +198,7 @@ func (x executor) guard(combo, app, program string) error {
 		x.logf("shortcut %s was for %s, but %s is in front now; skipped", combo, app, now)
 		return engine.ErrSkipped
 	}
-	if now := x.program(); program != "" && now != program {
+	if now := x.shown().program; program != "" && now != program {
 		x.logf("shortcut %s was for %s, but the Rex pane now runs %s; skipped", combo, program, now)
 		return engine.ErrSkipped
 	}
@@ -225,7 +225,9 @@ func (x executor) Show(p rex.Pane, zoom bool) error {
 	}
 	return nil
 }
-func (x executor) Perform(a string, args map[string]string) error { return x.rex.Perform(a, args) }
+func (x executor) Perform(a string, args map[string]string) error {
+	return x.rex.PerformIn(x.shown().session, a, args)
+}
 func (x executor) SendKeys(b string, k []string) error            { return x.rex.SendKeys(b, k...) }
 func (x executor) SendText(b, t string) error                     { return x.rex.SendText(b, t) }
 func (x executor) CLI(a []string) error                           { return x.rex.CLI(a...) }

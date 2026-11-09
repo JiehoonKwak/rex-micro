@@ -574,11 +574,24 @@ func (c *Client) ForgetApp() { c.mu.Lock(); c.resolved = ""; c.mu.Unlock() }
 // Perform runs an action as the Rex app: a client action (pane.zoom), a Rex
 // config action defined with rex.action, or a block action.
 func (c *Client) Perform(action string, args map[string]string) error {
+	return c.PerformIn("", action, args)
+}
+
+// PerformIn is Perform for a key pressed while session is on screen: a Rex
+// config action (a name without a dot) gets that session and its focused
+// block in ctx, as a key pressed in the app would. Without it, ctx has
+// neither, since the daemon runs outside any Rex pane. Client and block
+// actions already act on what the app shows, so they ignore session.
+func (c *Client) PerformIn(session, action string, args map[string]string) error {
 	app, err := c.AppClient()
 	if err != nil {
 		return err
 	}
-	argv := []string{"-C", app, "do", action}
+	argv := []string{"-C", app, "do"}
+	if session != "" && !strings.Contains(action, ".") {
+		argv = append(argv, "-s", session)
+	}
+	argv = append(argv, action)
 	keys := make([]string, 0, len(args))
 	for k := range args {
 		keys = append(keys, k)

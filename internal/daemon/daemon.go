@@ -70,7 +70,7 @@ type daemon struct {
 	lastSent     []byte
 	pauses       int
 	foreignAt    time.Time
-	context      atomic.Pointer[[2]string] // app in front and Rex program, for the effect worker
+	context      atomic.Pointer[onScreen] // for the effect worker
 	front        string                    // app in front
 	asked        bool                      // Accessibility prompt shown
 	frontApp     func() string
@@ -170,18 +170,18 @@ func Start(opts Options) error {
 		d.cfgMod = st.ModTime()
 	}
 	d.poll.Store(int64(cfg.Rex.Poll.Duration))
-	program := func() string {
+	shown := func() onScreen {
 		if c := d.context.Load(); c != nil {
-			return c[1]
+			return *c
 		}
-		return ""
+		return onScreen{}
 	}
 	// Key actions log through logf, which a running `rex-micro press` also reads.
 	logf := func(format string, args ...any) {
 		logger.Printf(format, args...)
 		d.presses.add(fmt.Sprintf(format, args...))
 	}
-	d.eng = engine.New(cfg, executor{rex: d.rex, post: opts.Shortcut, hold: opts.HoldShortcut, front: opts.FrontApp, program: program, logf: logf}, d.enqueue, logf)
+	d.eng = engine.New(cfg, executor{rex: d.rex, post: opts.Shortcut, hold: opts.HoldShortcut, front: opts.FrontApp, shown: shown, logf: logf}, d.enqueue, logf)
 	d.eng.OnLayer = d.onLayer
 	d.eng.OnKeys = d.onKeys
 	helper := &overlayHelper{exe: exe, logf: logger.Printf}

@@ -105,13 +105,21 @@ var frontPoll = 300 * time.Millisecond
 // followContext gives the engine the app in front and, inside Rex, the
 // program in the pane Rex shows, so layers with match rules take over.
 func (d *daemon) followContext() {
-	program := ""
-	if config.AppName(d.front) == config.RexApp {
-		if p := rex.Current(d.panes); p != nil {
-			program = p.Program
+	var shown onScreen
+	if p := rex.Current(d.panes); p != nil {
+		if config.AppName(d.front) == config.RexApp {
+			shown.program = p.Program
+		}
+		if p.Host == "" { // the app's own server runs the config actions
+			shown.session = p.Session
 		}
 	}
-	d.status.FrontApp, d.status.Program = d.front, program
-	d.context.Store(&[2]string{d.front, program})
-	d.eng.SetContext(d.front, program)
+	d.status.FrontApp, d.status.Program = d.front, shown.program
+	d.context.Store(&shown)
+	d.eng.SetContext(d.front, shown.program)
 }
+
+// onScreen is what the effect worker needs from the loop: the program in the
+// Rex pane in front (empty unless Rex is in front) and the session the app
+// shows when it lives on this Mac's server.
+type onScreen struct{ program, session string }
