@@ -104,6 +104,18 @@ func changed(a, b string) []string {
 	return out
 }
 
+// A config with no layers (empty, or only global settings) opens with the
+// default layer to edit, even though default.toml's comments mention
+// [[layer]] before the first real one (review of PR 9).
+func TestConfigWithoutLayersOpens(t *testing.T) {
+	for _, text := range []string{"", "[pad]\nlayers = \"off\"\n"} {
+		m, _ := newModel(t, text)
+		if m.cfg.Layers[0].Name != "agents" {
+			t.Fatalf("%q: layers = %+v", text, m.cfg.Layers)
+		}
+	}
+}
+
 func TestAssignFromPadAndSave(t *testing.T) {
 	m, saved := newModel(t, config.Default)
 	send(m, "pad:ENC_CW", "enter") // select the dial's clockwise turn, edit its gestures

@@ -98,7 +98,9 @@ func New(opts Options) (*Model, error) {
 	doc := tomledit.Parse(opts.Text)
 	if doc.Layers() == 0 {
 		// Only defaults: write the default layer out so it can be edited.
-		i := strings.Index(config.Default, "[[layer]]")
+		// The first table header at the start of a line: comments mention
+		// [[layer]] too.
+		i := strings.Index(config.Default, "\n[[layer]]\n") + 1
 		doc = tomledit.Parse(strings.TrimRight(opts.Text, "\n") + "\n\n" + config.Default[i:])
 	}
 	cfg, err := config.Parse(doc.String())

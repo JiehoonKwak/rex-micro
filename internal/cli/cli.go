@@ -147,7 +147,17 @@ func status(asJSON bool) error {
 		pad = fmt.Sprintf("connected over %s, firmware %s, battery %.0f%%", s.Transport, s.Firmware, s.Battery)
 	}
 	fmt.Printf("pad:     %s\n", pad)
-	fmt.Printf("layer:   %s (%d of %d)\n", s.Layer, s.LayerIndex+1, len(s.Layers))
+	layer := fmt.Sprintf("%s (%d of %d)", s.Layer, s.LayerIndex+1, len(s.Layers))
+	switch s.PadLayers {
+	case "sync":
+		layer += ", on the pad too (touch sensor switches)"
+	case "syncing":
+		layer += ", storing the layers on the pad"
+	case "", "off":
+	default:
+		layer += ", pad layers " + s.PadLayers
+	}
+	fmt.Printf("layer:   %s\n", layer)
 	fmt.Printf("access:  Input Monitoring %s\n", s.Access)
 	if s.Paused {
 		fmt.Println("paused:  yes (a `rex-micro test` is running)")

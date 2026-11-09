@@ -27,6 +27,7 @@ type Config struct {
 	Lighting LightingConfig `toml:"lighting"`
 	Stick    StickConfig    `toml:"stick"`
 	Timing   TimingConfig   `toml:"timing"`
+	Pad      PadConfig      `toml:"pad"`
 	Layers   []Layer        `toml:"layer"`
 }
 
@@ -71,6 +72,17 @@ type TimingConfig struct {
 	DoublePress Duration `toml:"double_press"`
 	Hold        Duration `toml:"hold"`
 }
+
+// PadConfig controls what rex-micro stores on the pad itself.
+type PadConfig struct {
+	// Layers is "sync" to give the pad one hardware layer per layer here, so
+	// its touch sensor switches them and its LEDs show the active one, or
+	// "off" to leave the pad's own keymap alone (restoring it after sync).
+	Layers string `toml:"layers"`
+}
+
+// SyncLayers reports whether the pad's hardware layers follow these layers.
+func (c *Config) SyncLayers() bool { return c.Pad.Layers == "sync" }
 
 type Layer struct {
 	Name  string                 `toml:"name"`
@@ -378,6 +390,15 @@ func (c *Config) Validate() error {
 	}
 	if c.Timing.DoublePress.Duration <= 0 || c.Timing.Hold.Duration <= 0 || c.Rex.Poll.Duration <= 0 {
 		return fmt.Errorf("timing and rex.poll durations must be positive")
+	}
+	switch c.Pad.Layers {
+	case "off":
+	case "sync":
+		if len(c.Layers) > 6 {
+			return fmt.Errorf("pad.layers: the pad holds 6 layers and %d are defined; remove some or set pad.layers = \"off\"", len(c.Layers))
+		}
+	default:
+		return fmt.Errorf("pad.layers: %q is not sync or off", c.Pad.Layers)
 	}
 	seen := map[string]bool{}
 	for i, layer := range c.Layers {

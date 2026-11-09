@@ -43,6 +43,21 @@ exact `front_app` and `program` names.
 People can also edit bindings with `rex-micro edit`, a full-screen editor;
 suggest it when they want to try things by pressing keys.
 
+## Agent Keys and layers
+
+- The Agent Keys follow agents on this Mac and on every host in `rex hosts`,
+  as the Rex sidebar does. `[agents] order` picks how they are ordered:
+  `stable` (a key keeps its agent), `priority` (the sidebar's Activity by
+  Priority) or `session`. `rex-micro status` shows each key's host.
+- `[pad] layers = "sync"` stores the config's layers (at most six) on the pad:
+  the touch sensor switches them and the pad's LEDs show the active one.
+  Setting `"off"` writes the pad's previous keymap back. It replaces what Work
+  Louder Input put on the pad, so confirm with the user before turning it on,
+  and have them quit Input.
+- Keep Agent Keys on agents in every layer (`[agents] always = true`) unless the
+  user wants otherwise; layers that turn on by `match = { program = ... }`
+  need no switching at all.
+
 ## After every edit
 
 Run `rex-micro config check`. It names the bad setting (for example
@@ -70,6 +85,7 @@ when the change matters.
    daemon's executable. `doctor` reports `daemon shortcuts`; allow
    rex-micro under System Settings > Privacy & Security > Accessibility.
 6. A layer does not turn on: compare `front_app`/`program` in
-   `rex-micro status --json` with the layer's `match`.
+   `rex-micro status --json` with the layer's `match`. With pad layers on,
+   `pad_layers` in the same output says `sync` or the error that stopped it.
 7. `rex-micro monitor` prints raw pad events while the daemon is paused.
 8. Logs: `~/Library/Logs/rex-micro.log`.

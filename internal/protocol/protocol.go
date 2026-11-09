@@ -126,9 +126,15 @@ func (m Message) Args() json.RawMessage {
 	return m.Params
 }
 
-// Request builds a request that expects a reply.
-func Request(method string, id int) []byte {
-	b, _ := json.Marshal(map[string]any{"m": method, "id": id})
+// Request builds a request that expects a reply. With params it uses the
+// standard {method, params, id} form: firmware 0.6.2 ignores the compact form's
+// "p" for the filesystem methods ("Missing data parameter").
+func Request(method string, params any, id int) []byte {
+	if params == nil {
+		b, _ := json.Marshal(map[string]any{"m": method, "id": id})
+		return b
+	}
+	b, _ := json.Marshal(map[string]any{"method": method, "params": params, "id": id})
 	return b
 }
 

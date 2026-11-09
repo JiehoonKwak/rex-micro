@@ -190,6 +190,14 @@ func MatchLayer(layers []config.Layer, app, program string) int {
 	return 0
 }
 
+// SelectLayer turns on layer i as if picked by hand (layer.next does the
+// same): it stays until the app in front or the Rex program changes.
+func (e *Engine) SelectLayer(i int) {
+	if i >= 0 && i < len(e.cfg.Layers) {
+		e.setLayer(i)
+	}
+}
+
 func (e *Engine) Layer() int                { return e.layer }
 func (e *Engine) LayerConfig() config.Layer { return e.cfg.Layers[e.layer] }
 func (e *Engine) Selected() string          { return e.selected }

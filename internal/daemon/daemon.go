@@ -75,11 +75,15 @@ type Status struct {
 	Accessibility string `json:"accessibility"`
 	FrontApp      string `json:"front_app,omitempty"`
 	Program       string `json:"program,omitempty"` // in the pane Rex shows
+	// PadLayers is the pad's own layers: off, syncing, sync or "error: ...".
+	PadLayers string `json:"pad_layers,omitempty"`
 }
 
 type request struct {
 	Cmd   string `json:"cmd"`
 	fw    *micro.Status
+	pad   *padDone
+	padLost error // a layer notice the pad never took
 	reply chan any
 	done  chan struct{} // closed when a pausing client disconnects
 }
@@ -117,6 +121,17 @@ type daemon struct {
 	fronts       chan string
 	snapshots    chan snapshot
 	requests     chan request
+
+	// The pad's own layers (padlayers.go).
+	padJobs   chan padJob
+	padTell   chan int
+	padSeen   chan int
+	padOn     atomic.Bool // the worker polls the pad's layer
+	padGen    int
+	padSynced bool
+	padToldAt time.Time
+	padWant   int     // the layer last sent to the pad
+	padIO     padPort // the pad, as the worker uses it
 }
 
 type snapshot struct {
@@ -216,8 +231,12 @@ func Start(opts Options) error {
 		requestTrust: requestTrust,
 		snapshots:    make(chan snapshot, 1),
 		requests:     make(chan request),
+		padJobs:      make(chan padJob, 1),
+		padTell:      make(chan int, 1),
+		padSeen:      make(chan int, 1),
 		status:       Status{PID: os.Getpid(), Executable: exe, Config: cfgPath},
 	}
+	d.padIO = d.pad
 	if st, err := os.Stat(cfgPath); err == nil {
 		d.cfgMod = st.ModTime()
 	}
@@ -229,9 +248,10 @@ func Start(opts Options) error {
 		return ""
 	}
 	d.eng = engine.New(cfg, executor{rex: d.rex, post: opts.Shortcut, hold: opts.HoldShortcut, front: opts.FrontApp, program: program, logger: logger}, d.enqueue, logger.Printf)
-	d.eng.OnLayer = func(int) { d.render(true) }
+	d.eng.OnLayer = func(i int) { d.render(true); d.tellPad(i) }
 	d.askTrust(logger)
 	go d.runEffects()
+	go d.padWorker(opts.Stop)
 	watchCtx, stopWatch := context.WithCancel(context.Background())
 	go d.watchRex(watchCtx)
 	go d.pollFront(opts.Stop)
@@ -330,6 +350,8 @@ func (d *daemon) loop(stop <-chan struct{}, update func() (bool, error), logger 
 			}
 		case r := <-d.requests:
 			d.onRequest(r, logger)
+		case i := <-d.padSeen:
+			d.onPadLayer(i)
 		}
 	}
 }
@@ -374,6 +396,8 @@ func (d *daemon) onPad(ev micro.Event, logger *log.Logger) {
 		d.render(true)
 	case ev.Disconnected:
 		d.status.Connected, d.status.Transport = false, ""
+		d.padSynced = false // checked again when it comes back
+		d.updatePadOn()
 		d.eng.Reset() // releases will never arrive; finish held keys now
 		logger.Printf("pad disconnected")
 	case ev.Foreign != "":
@@ -502,6 +526,9 @@ func (d *daemon) reload(logger *log.Logger) error {
 	d.slots = d.assigner.Assign(d.panes, cfg.Agents)
 	d.eng.SetPanes(d.panes, d.slots)
 	d.render(true)
+	if d.status.Firmware != "" && d.status.Connected {
+		d.syncPad()
+	}
 	logger.Printf("config reloaded")
 	return nil
 }
@@ -521,6 +548,7 @@ func (d *daemon) onRequest(r request, logger *log.Logger) {
 			d.eng.Reset()
 		}
 		d.pauses++
+		d.updatePadOn()
 		r.reply <- map[string]string{"ok": "paused"}
 		go func() { <-r.done; d.requests <- request{Cmd: "resume"} }()
 	case r.Cmd == "resume":
@@ -530,8 +558,16 @@ func (d *daemon) onRequest(r request, logger *log.Logger) {
 		if d.pauses == 0 {
 			d.render(true)
 		}
+		d.updatePadOn()
+	case r.pad != nil:
+		d.onPadDone(r.pad)
+	case r.padLost != nil:
+		d.onPadLost(r.padLost)
 	case r.fw != nil:
 		d.status.Firmware, d.status.Battery = r.fw.Version, r.fw.Battery
+		if d.status.Connected {
+			d.syncPad() // the pad answers now; bring its keymap in line
+		}
 	default:
 		if r.reply != nil {
 			r.reply <- map[string]string{"error": "unknown command " + r.Cmd}

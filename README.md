@@ -13,7 +13,8 @@ Rex terminal. It doesn't need the Work Louder Input app or ChatGPT.
   focused pane. The stick moves focus between panes, and the dial scrolls.
 - **Make every key yours.** Bind any key, dial turn or stick direction to a Rex
   action, a key press, text, a `rex` command or a shell command. Add as many
-  layers as you like and switch between them with the dial.
+  layers as you like and switch between them with the dial, or store up to six
+  on the pad so its touch sensor switches them and its LEDs show the active one.
 
 <p align="center"><img src="docs/media/demo.gif" alt="Demo: an agent asks for permission, its key turns amber, one press jumps there and APPROVE answers" width="100%"></p>
 
@@ -164,6 +165,28 @@ example; `rex-micro config default` prints it.
 Shortcut bindings need Accessibility: the daemon asks for it the first time
 your config uses one, and `rex-micro doctor` checks it.
 
+### Layers on the pad
+
+The pad has layers of its own: the touch sensor at its bottom left cycles
+them, and three LEDs show which is on. Set
+
+```toml
+[pad]
+layers = "sync"
+```
+
+and rex-micro stores one pad layer per `[[layer]]` (at most six). The touch
+sensor then switches rex-micro's layers, and a layer that turns on by `match`
+or the dial shows on the LEDs, so the dial press is free for something else.
+The keymap this replaces (what Work Louder Input wrote) is saved and written
+back when you set `layers = "off"`; do that before uninstalling. Quit Work
+Louder Input while sync is on, since it rewrites the pad's keymap.
+
+A layout that keeps Rex in charge: leave the Agent Keys on agents in every
+layer (`[agents] always = true`), let layers turn on by `program` (lazygit, a
+diff tool) or `app` (a browser), and keep a hand-picked layer for things like
+moving between sessions and splits.
+
 ## For agents
 
 rex-micro ships an agent skill that teaches coding agents to edit this config
@@ -199,7 +222,11 @@ of every pane's agent state inside the server when Rex reports a change (and
 every `[rex] poll` in case one was missed), and sends key actions back through
 the `rex` CLI. Protocol facts come from
 [FreeMicro](https://github.com/eliBenven/freemicro)'s reverse-engineered
-[PROTOCOL.md](https://github.com/eliBenven/freemicro/blob/main/docs/PROTOCOL.md).
+[PROTOCOL.md](https://github.com/eliBenven/freemicro/blob/main/docs/PROTOCOL.md)
+and from measurements on firmware 0.6.2: `device.status` reports the pad's
+layer (`layer_index`, counted from 1), `fs.read`/`fs.writebin` read and replace
+its `keymap.json`, and `host.focused_app` switches to the layer linked to an
+app. Pad layers rely on these.
 
 ## License
 

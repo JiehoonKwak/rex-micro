@@ -60,6 +60,15 @@ func TestUncommentedExampleLayerParses(t *testing.T) {
 	}
 }
 
+// layerList declares layers named l<from>..l<to>.
+func layerList(from, to int) string {
+	var b strings.Builder
+	for i := from; i <= to; i++ {
+		b.WriteString("[[layer]]\nname = \"l" + string(rune('0'+i)) + "\"\nmatch = { app = \"A" + string(rune('0'+i)) + "\" }\n")
+	}
+	return b.String()
+}
+
 func TestRejects(t *testing.T) {
 	base := "[[layer]]\nname = \"a\"\n[layer.keys]\n"
 	cases := map[string]struct{ text, want string }{
@@ -81,6 +90,8 @@ func TestRejects(t *testing.T) {
 		"held stick":        {base + "STICK_UP = { shortcut = \"fn\", held = true }\n", "never held down"},
 		"held key":          {base + "ACT06 = { key = \"a\", held = true }\n", "held only applies to shortcut"},
 		"dial gesture":      {base + "ENC_CW = { hold = { shell = \"a\" } }\n", "only has press"},
+		"pad layers":        {"[pad]\nlayers = \"on\"\n", "pad.layers: \"on\" is not sync or off"},
+		"seven pad layers":  {"[pad]\nlayers = \"sync\"\n" + strings.Repeat("[[layer]]\nname = \"x\"\n", 1) + layerList(2, 7), "the pad holds 6 layers and 7 are defined"},
 	}
 	for name, tc := range cases {
 		_, err := Parse(tc.text)

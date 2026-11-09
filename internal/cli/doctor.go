@@ -89,6 +89,11 @@ func doctor() int {
 		}
 		if st.Connected {
 			c.ok("daemon pad", fmt.Sprintf("connected over %s, firmware %s", st.Transport, st.Firmware))
+			if strings.HasPrefix(st.PadLayers, "error") {
+				c.fail("pad layers", strings.TrimPrefix(st.PadLayers, "error: "))
+			} else if st.PadLayers == "sync" {
+				c.ok("pad layers", "stored on the pad; the touch sensor switches them")
+			}
 		} else {
 			c.warn("daemon pad", "the daemon does not see the pad; plug it in or pair it")
 		}
@@ -159,7 +164,11 @@ func doctor() int {
 		c.warn("ChatGPT", "running; it shares the pad unless it lacks Input Monitoring. Turn ChatGPT off under System Settings > Privacy & Security > Input Monitoring and restart it")
 	}
 	if running("input") {
-		c.warn("Work Louder Input", "running; it is not needed and can fight over the pad. Quit it")
+		if cfg != nil && cfg.SyncLayers() {
+			c.fail("Work Louder Input", "running while pad.layers = \"sync\"; it rewrites the pad's keymap and switches its layers. Quit it")
+		} else {
+			c.warn("Work Louder Input", "running; it is not needed and can fight over the pad. Quit it")
+		}
 	}
 
 	// Signature: decides whether Input Monitoring survives updates.

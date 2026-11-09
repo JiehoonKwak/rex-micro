@@ -52,8 +52,21 @@ angle_offset = 0.0     # rotate directions if up comes out as right (-1 to 1 = a
 double_press = "300ms"
 hold = "500ms"
 
+[pad]
+# The pad's own layers: its bottom-left touch sensor cycles them and its three
+# LEDs show which is on.
+#   off  - leave the pad's keymap to Work Louder Input; rex-micro reads only
+#          the Codex layer (Layer 1)
+#   sync - store one pad layer per [[layer]] below (at most 6): the touch
+#          sensor then picks a rex-micro layer, and a layer rex-micro turns on
+#          (by match or the dial) shows on the LEDs. The keymap it replaces is
+#          saved and written back when you set "off" again. Quit Work Louder
+#          Input while this is on: it rewrites the keymap.
+layers = "off"
+
 # Layers. The first layer is the base (it cannot have a match): keys a later
-# layer leaves out fall through to it. Press the dial to cycle layers, or let a layer turn on by
+# layer leaves out fall through to it. Press the dial to cycle layers (or touch
+# the pad's sensor, with [pad] layers = "sync"), or let a layer turn on by
 # itself with match:
 #   match = { app = "Google Chrome" }   while that app is in front ("Rex" = any Rex)
 #   match = { program = "lazygit" }     while that program runs in the Rex pane you see;
