@@ -36,7 +36,10 @@ type RexConfig struct {
 }
 
 type AgentsConfig struct {
-	Mode   string   `toml:"mode"`
+	Mode string `toml:"mode"`
+	// Order arranges auto mode's agents: stable (a key keeps its pane),
+	// priority or session (the Rex sidebar's Activity groupings).
+	Order  string   `toml:"order"`
 	Slots  []string `toml:"slots"`
 	Press  string   `toml:"press"`
 	Double string   `toml:"double"`
@@ -341,6 +344,11 @@ func (c *Config) Validate() error {
 		}
 	default:
 		return fmt.Errorf("agents.mode: %q is not auto, sessions or slots", c.Agents.Mode)
+	}
+	switch c.Agents.Order {
+	case "stable", "priority", "session":
+	default:
+		return fmt.Errorf("agents.order: %q is not stable, priority or session", c.Agents.Order)
 	}
 	if !agentActions[c.Agents.Press] {
 		return fmt.Errorf("agents.press: %q is not show, show_zoom or none", c.Agents.Press)

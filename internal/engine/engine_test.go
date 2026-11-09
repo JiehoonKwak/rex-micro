@@ -19,7 +19,11 @@ type recorder struct {
 }
 
 func (r *recorder) Show(p rex.Pane, zoom bool) error {
-	r.calls = append(r.calls, fmt.Sprintf("show %s zoom=%v", p.Block, zoom))
+	call := fmt.Sprintf("show %s zoom=%v", p.Block, zoom)
+	if p.Window != "" {
+		call += " in " + p.Window
+	}
+	r.calls = append(r.calls, call)
 	return nil
 }
 func (r *recorder) Perform(a string, args map[string]string) error {
@@ -133,6 +137,37 @@ func TestAgentKeysShowSlotAndDoubleZooms(t *testing.T) {
 	e2.selected = "b1"
 	press(e2, "ACT07", t0)
 	want(t, r2, `keys "b1" y`)
+}
+
+// A refresh that reorders the keys while a press waits for a possible double
+// must not send that press, or its double, to another pane.
+func TestAgentKeyKeepsThePaneItWasPressedOn(t *testing.T) {
+	e, r := setup(t, "[agents]\norder = \"priority\"\n")
+	var a agents.Assigner
+	before := []rex.Pane{{Block: "A", App: "claude-code", State: "working", SessionIndex: 1}}
+	after := append([]rex.Pane{{Block: "B", App: "codex", State: "blocked", SessionIndex: 1}}, before...)
+
+	e.SetPanes(before, a.Assign(before, e.cfg.Agents))
+	press(e, "AG00", t0)
+	e.SetPanes(after, a.Assign(after, e.cfg.Agents)) // B takes AG00
+	e.Advance(t0.Add(400 * time.Millisecond))
+	want(t, r, "show A zoom=false")
+
+	e.SetPanes(before, a.Assign(before, e.cfg.Agents))
+	press(e, "AG00", t0)
+	e.SetPanes(after, a.Assign(after, e.cfg.Agents))
+	press(e, "AG00", t0.Add(150*time.Millisecond))
+	want(t, r, "show A zoom=true")
+
+	// The pane moves to another window while the press waits: show it where
+	// it is now, not where it was.
+	inW1 := []rex.Pane{{Block: "A", Window: "W1", App: "claude-code", State: "working", SessionIndex: 1}}
+	inW2 := []rex.Pane{{Block: "A", Window: "W2", App: "claude-code", State: "working", SessionIndex: 1}}
+	e.SetPanes(inW1, a.Assign(inW1, e.cfg.Agents))
+	press(e, "AG00", t0)
+	e.SetPanes(inW2, a.Assign(inW2, e.cfg.Agents))
+	e.Advance(t0.Add(400 * time.Millisecond))
+	want(t, r, "show A zoom=false in W2")
 }
 
 func TestHoldSuppressesPress(t *testing.T) {

@@ -155,7 +155,8 @@ shortcut (a lone modifier works as a dictation hotkey), text, `rex` CLI
 arguments, a shell command, or a builtin such as `layer.next`. A key can also
 take one binding per gesture (`press`, `double`, `hold`, `down`, `up`). A layer
 can turn on by itself for the app in front or the program in the Rex pane you
-see, and the Agent Keys follow agent panes, sessions or named slots. The
+see, and the Agent Keys follow agent panes (in a fixed order or the Rex
+sidebar's Activity order), sessions or named slots. The
 [default config](internal/config/default.toml) shows every option with an
 example; `rex-micro config default` prints it.
 

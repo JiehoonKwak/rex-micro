@@ -48,6 +48,56 @@ func TestAutoAssignmentIsStable(t *testing.T) {
 	}
 }
 
+// order = "priority" matches the Rex sidebar's Activity by Priority as
+// observed in Rex Beta 1886: Blocked, Failed, Working, then Done holding done
+// and idle together, the latest entry into a state first within a group.
+func TestPriorityOrderMatchesSidebar(t *testing.T) {
+	c := cfg(t, "[agents]\norder = \"priority\"\n")
+	var a Assigner
+	now := time.Now()
+	at := func(p rex.Pane, ago time.Duration) rex.Pane { p.Since = now.Add(-ago); return p }
+	panes := []rex.Pane{
+		at(agent("oldWork", "working", 1), 10*time.Minute),
+		at(agent("done", "done", 1), 2*time.Minute),
+		at(agent("idle", "idle", 1), time.Minute),
+		at(agent("err", "error", 2), time.Hour),
+		at(agent("newWork", "working", 2), 0),
+		at(agent("block", "blocked", 2), time.Hour),
+	}
+	got := blocks(a.Assign(panes, c.Agents))
+	if got != [Keys]string{"block", "err", "newWork", "oldWork", "idle", "done"} {
+		t.Fatalf("priority = %v", got)
+	}
+	// A working agent reports again (Since moves) but stays in the same state:
+	// it keeps its place, as in the sidebar.
+	panes[0].Since = now.Add(time.Second)
+	got = blocks(a.Assign(panes, c.Agents))
+	if got != [Keys]string{"block", "err", "newWork", "oldWork", "idle", "done"} {
+		t.Fatalf("after a same-state report = %v", got)
+	}
+	// A state change re-sorts the keys at once; nothing sticks.
+	panes[2].State, panes[2].Since = "blocked", now.Add(2*time.Second)
+	got = blocks(a.Assign(panes, c.Agents))
+	if got != [Keys]string{"idle", "block", "err", "newWork", "oldWork", "done"} {
+		t.Fatalf("after change = %v", got)
+	}
+}
+
+// order = "session" follows session, then layout order, and does not stick.
+func TestSessionOrderDoesNotStick(t *testing.T) {
+	c := cfg(t, "[agents]\norder = \"session\"\n")
+	var a Assigner
+	a.Assign([]rex.Pane{agent("a", "working", 1), agent("b", "idle", 2)}, c.Agents)
+	got := blocks(a.Assign([]rex.Pane{agent("b", "idle", 2), agent("c", "working", 1)}, c.Agents))
+	if got != [Keys]string{"c", "b"} {
+		t.Fatalf("session = %v", got)
+	}
+	got = blocks(a.Assign([]rex.Pane{agent("d", "done", 1), agent("b", "idle", 2), agent("c", "working", 1)}, c.Agents))
+	if got != [Keys]string{"d", "c", "b"} {
+		t.Fatalf("session after new agent = %v", got)
+	}
+}
+
 func TestSessionsModeShowsMostUrgent(t *testing.T) {
 	c := cfg(t, "[agents]\nmode = \"sessions\"\n")
 	var a Assigner

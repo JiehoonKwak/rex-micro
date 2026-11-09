@@ -76,7 +76,12 @@ type keyState struct {
 	tapAt        time.Time // first tap of a possible double, zero when none pending
 	binding      *config.KeyBinding
 	app, program string // context when the gesture began; its actions target it
-	press        *keyPress
+	// agent is the block an Agent Key stood for when the gesture began, so a
+	// refresh that reorders the keys during the double-press wait cannot send
+	// the press to another pane. Only the ID is kept: where the pane is (its
+	// window) is looked up when the gesture fires.
+	agent string
+	press *keyPress
 }
 
 // press pairs one key press's down and up effects. The up runs only if the
@@ -237,7 +242,10 @@ func (e *Engine) keyDown(name string, now time.Time) {
 	b := e.binding(name)
 	if s.tapAt.IsZero() {
 		// A double completes with the binding and context it started with.
-		s.binding, s.app, s.program = b, e.app, e.program
+		s.binding, s.app, s.program, s.agent = b, e.app, e.program, ""
+		if i, ok := agentIndex(name); ok && e.slots[i].Pane != nil {
+			s.agent = e.slots[i].Pane.Block
+		}
 	}
 	s.down, s.downAt, s.holdFired = true, now, false
 	s.press = &keyPress{hasDown: gestureAction(s.binding, "down") != nil}
@@ -509,6 +517,16 @@ func (e *Engine) effect(name string, f func() error) {
 	}, gesture == "up")
 }
 
+// pane is the current snapshot of a block, nil once it has closed.
+func (e *Engine) pane(block string) *rex.Pane {
+	for i := range e.panes {
+		if e.panes[i].Block == block {
+			return &e.panes[i]
+		}
+	}
+	return nil
+}
+
 // agentPane is the selected agent if it still runs, else the most urgent one.
 func (e *Engine) agentPane() *rex.Pane {
 	for i := range e.panes {
@@ -549,8 +567,10 @@ func (e *Engine) builtin(name, b string) {
 		e.effect(name, func() error { return e.exec.Show(p, false) })
 	case b == "agent.show" || b == "agent.show_zoom":
 		var p *rex.Pane
-		if i, ok := agentIndex(name); ok {
-			p = e.slots[i].Pane
+		if _, ok := agentIndex(name); ok {
+			if e.cur != nil && e.cur.agent != "" {
+				p = e.pane(e.cur.agent)
+			}
 		} else {
 			p = e.agentPane()
 		}

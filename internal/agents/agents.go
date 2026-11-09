@@ -4,6 +4,7 @@ package agents
 import (
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/JiehoonKwak/rex-micro/internal/config"
 	"github.com/JiehoonKwak/rex-micro/internal/protocol"
@@ -29,6 +30,29 @@ func rank(state string) int {
 	return 4
 }
 
+// sidebarRank orders states the way the Rex sidebar's Activity by Priority
+// groups them (observed in Rex Beta 1886): Blocked, Failed, Working, then Done,
+// which also holds idle programs.
+func sidebarRank(state string) int {
+	switch state {
+	case "blocked":
+		return 0
+	case "error":
+		return 1
+	case "working":
+		return 2
+	case "done", "idle":
+		return 3
+	}
+	return 4
+}
+
+// entry is when a pane entered its current state.
+type entry struct {
+	state string
+	at    time.Time
+}
+
 // MostUrgent picks the agent pane needing attention first: blocked or error,
 // then done, then working, then idle; the longest-waiting first within a rank.
 func MostUrgent(panes []rex.Pane) *rex.Pane {
@@ -46,10 +70,34 @@ func MostUrgent(panes []rex.Pane) *rex.Pane {
 	return best
 }
 
-// Assigner keeps Agent Key assignments stable across refreshes, so a key does
-// not jump to another pane when an unrelated agent starts or exits.
+// Assigner maps agents onto the keys. With order = "stable" it keeps each
+// assignment across refreshes, so a key does not jump to another pane when an
+// unrelated agent starts or exits; the sidebar orders re-sort every refresh.
 type Assigner struct {
 	prev [Keys]string // block ID per key in auto mode
+	// entered is when each agent pane entered its state. The sidebar lists the
+	// latest entry first within a group; Since moves on every report, so a
+	// working agent that keeps reporting would otherwise jump ahead.
+	entered map[string]entry
+}
+
+// enteredAt records state changes and returns when each pane entered its
+// current state. The first sighting of a state takes the record's time: Rex
+// keeps only updated_at, so right after rex-micro starts, an agent that
+// reported again since entering its state can sit earlier than in the sidebar
+// until its next state change.
+func (a *Assigner) enteredAt(agents []*rex.Pane) map[string]time.Time {
+	seen := make(map[string]entry, len(agents))
+	out := make(map[string]time.Time, len(agents))
+	for _, p := range agents {
+		e, ok := a.entered[p.Block]
+		if !ok || e.state != p.State {
+			e = entry{p.State, p.Since}
+		}
+		seen[p.Block], out[p.Block] = e, e.at
+	}
+	a.entered = seen
+	return out
 }
 
 // Assign maps the current panes onto the six keys.
@@ -100,12 +148,25 @@ func (a *Assigner) Assign(panes []rex.Pane, cfg config.AgentsConfig) [Keys]Slot 
 				byBlock[panes[i].Block] = &panes[i]
 			}
 		}
+		// The snapshot lists panes in session, then layout order.
 		sort.SliceStable(agents, func(i, j int) bool { return agents[i].SessionIndex < agents[j].SessionIndex })
+		at := a.enteredAt(agents)
+		if cfg.Order == "priority" {
+			sort.SliceStable(agents, func(i, j int) bool {
+				ri, rj := sidebarRank(agents[i].State), sidebarRank(agents[j].State)
+				if ri != rj {
+					return ri < rj
+				}
+				return at[agents[i].Block].After(at[agents[j].Block])
+			})
+		}
 		taken := map[string]bool{}
-		for i, id := range a.prev {
-			if p, ok := byBlock[id]; ok {
-				slots[i] = Slot{Pane: p, State: p.State}
-				taken[id] = true
+		if cfg.Order == "stable" {
+			for i, id := range a.prev {
+				if p, ok := byBlock[id]; ok {
+					slots[i] = Slot{Pane: p, State: p.State}
+					taken[id] = true
+				}
 			}
 		}
 		next := 0

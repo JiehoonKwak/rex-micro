@@ -15,6 +15,13 @@ poll = "30s"      # full re-read in case Rex missed an event; also the retry whi
 #              when Rex restarts; labels do not)
 mode = "auto"
 # slots = ["api", "web", "docs"]
+# How auto mode orders the agents on the keys:
+#   stable   - a key keeps its agent; a new agent takes the first free key
+#   priority - like the Rex sidebar's Activity by Priority: blocked, error,
+#              working, then done and idle together, the agent that entered its
+#              state last first within each; keys move as states change
+#   session  - like Activity by Session: session order, then layout order
+order = "stable"
 press = "show"         # show | show_zoom | none
 double = "show_zoom"
 always = false         # true: layers cannot rebind AG00-AG05; they always show agents
