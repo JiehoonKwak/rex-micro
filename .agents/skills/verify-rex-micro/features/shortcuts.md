@@ -18,8 +18,12 @@ The user presses a pad key while Rex is the active app.
 ## Driving it
 
 1. `rex-micro status --json`: `front_app` must be Rex (the agent's own Rex
-   pane usually is) and `accessibility` granted. Do not bring Rex to the front
-   yourself; if another app is in front, record a skip.
+   pane usually is) and `accessibility` granted. If another app is in front,
+   ask the user once, before delivering, whether you may bring Rex to the
+   front for about 30 seconds, then press and restore their app. Without that
+   yes, record a skip and report the change unverified; do not ship another
+   attempt judged only from the CLI (2026-11-09: two joystick fixes failed on
+   the pad this way).
 2. From `rex-micro keys`, pick a shortcut binding that is reversible and
    observable in Rex, such as next/previous tab (`cmd+shift+]` / `cmd+shift+[`)
    in a shown session with two or more tabs. Never a close, Enter or Escape.
