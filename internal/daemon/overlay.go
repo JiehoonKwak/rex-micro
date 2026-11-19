@@ -137,11 +137,16 @@ func (o *overlayHelper) endLocked() {
 }
 
 // onKeys answers the engine's keys.show: it draws the active layer, or hides.
+// A page the overlay already shows is not sent again.
 func (d *daemon) onKeys(show bool) {
 	page := ""
 	if show {
 		page = keysheet.HTML(keysheet.Build(d.eng, d.cfg))
 	}
+	if page == d.keysPage {
+		return
+	}
+	d.keysPage = page
 	keepNewest(d.keysOut, page)
 }
 

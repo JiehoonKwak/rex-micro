@@ -68,9 +68,9 @@ hold = "500ms"
 layers = "off"
 
 # Layers. The first layer is the base (it cannot have a match): keys a later
-# layer leaves out fall through to it. Press the dial to cycle layers (or touch
-# the pad's sensor, with [pad] layers = "sync"), or let a layer turn on by
-# itself with match:
+# layer leaves out fall through to it. Switch layers with a key bound to
+# layer.next (the dial press, for example), the pad's touch sensor (with
+# [pad] layers = "sync"), or let a layer turn on by itself with match:
 #   match = { app = "Google Chrome" }   while that app is in front ("Rex" = any Rex)
 #   match = { program = "lazygit" }     while that program runs in the Rex pane you see;
 #                                       wins over an app match, whatever the order
@@ -132,7 +132,8 @@ STICK_DOWN  = { action = "pane.focus.down", label = "Pane down" }
 STICK_LEFT  = { action = "pane.focus.left", label = "Pane left" }
 STICK_RIGHT = { action = "pane.focus.right", label = "Pane right" }
 
-# Example layers: uncomment one to try it.
+# Example layers: uncomment one to try it. The browser layer turns on by
+# itself; the others need a way to switch layers (see Layers above).
 #
 # A hand-picked layer for sessions, splits and tabs. The pad's touch sensor
 # turns it on, or the dial press once bound to layer.next (see above).

@@ -97,8 +97,9 @@ type daemon struct {
 	padIO     padPort // the pad, as the worker uses it
 
 	// The keys overlay (overlay.go).
-	keys    keysView
-	keysOut chan string
+	keys     keysView
+	keysOut  chan string
+	keysPage string // the page last sent to the overlay, "" when hidden
 }
 
 type snapshot struct {

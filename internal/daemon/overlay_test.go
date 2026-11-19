@@ -12,6 +12,7 @@ import (
 	"github.com/JiehoonKwak/rex-micro/internal/config"
 	"github.com/JiehoonKwak/rex-micro/internal/engine"
 	"github.com/JiehoonKwak/rex-micro/internal/protocol"
+	"github.com/JiehoonKwak/rex-micro/internal/rex"
 )
 
 // stop leaves no helper behind, even one that ignores its input closing.
@@ -75,6 +76,23 @@ name = "browser"
 	d.eng.Advance(now.Add(time.Second))
 	if p := next(); !strings.Contains(p, ">agents<") {
 		t.Fatalf("shown page is not the agents layer")
+	}
+	// An agent's message changes while the keys are up: they redraw, once.
+	pane := rex.Pane{Block: "b1", Session: "s1", SessionLabel: "ops", App: "claude-code", State: "blocked", Msg: "Allow Bash?"}
+	d.onSnapshot(snapshot{panes: []rex.Pane{pane}})
+	if p := next(); !strings.Contains(p, "Allow Bash?") {
+		t.Fatal("the overlay did not redraw for the agent's message")
+	}
+	pane.Msg = "Sign in to GitHub"
+	d.onSnapshot(snapshot{panes: []rex.Pane{pane}})
+	if p := next(); !strings.Contains(p, "Sign in to GitHub") {
+		t.Fatal("the overlay kept the old message")
+	}
+	d.onSnapshot(snapshot{panes: []rex.Pane{pane}})
+	select {
+	case <-d.keysOut:
+		t.Fatal("an unchanged snapshot redrew the overlay")
+	default:
 	}
 	d.eng.SelectLayer(1) // e.g. the touch sensor, while the dial is held
 	if p := next(); !strings.Contains(p, ">browser<") {

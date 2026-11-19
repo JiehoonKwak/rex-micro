@@ -28,50 +28,47 @@ type CLI struct {
 	// 0 means 5s.
 	Retry time.Duration
 
+	ask    sync.Mutex // one follow at a time; callers wait for its answer
 	mu     sync.Mutex
 	server string    // the followed server's executable, "" until one answered
-	tried  time.Time // when following last started without success
-	asking bool      // a follow is under way; others use the bootstrap meanwhile
+	tried  time.Time // when following last failed
 }
 
 // Path returns the rex to run: the followed server's executable, else the
-// bootstrap one, else "rex".
+// bootstrap one, else "rex". While no server is followed, it asks the server
+// (at most once per Retry); concurrent callers wait for that answer rather
+// than start a long-lived rex on the bootstrap one. Code that must not wait,
+// such as the daemon's loop, uses Known.
 func (l *CLI) Path() string {
 	if l.Fixed != "" {
 		return l.Fixed
 	}
-	l.mu.Lock()
-	if l.server != "" {
-		if _, err := os.Stat(l.server); err == nil {
-			defer l.mu.Unlock()
-			return l.server
-		}
-		l.server = "" // removed by an update; follow the new server
+	if exe := l.Known(); exe != "" {
+		return exe
+	}
+	l.ask.Lock()
+	defer l.ask.Unlock()
+	if exe := l.Known(); exe != "" {
+		return exe // another caller just followed it
 	}
 	retry := l.Retry
 	if retry == 0 {
 		retry = 5 * time.Second
 	}
-	ask := !l.asking && l.Exe != nil && time.Since(l.tried) >= retry
-	if ask {
-		l.asking, l.tried = true, time.Now()
-	}
-	l.mu.Unlock()
-
 	boot := ""
 	if l.Bootstrap != nil {
 		boot = l.Bootstrap()
 	}
+	l.mu.Lock()
+	ask := boot != "" && l.Exe != nil && time.Since(l.tried) >= retry
+	l.mu.Unlock()
 	if ask {
-		// Unlocked: asking takes up to seconds when Rex does not answer.
-		exe := ""
-		if boot != "" {
-			exe = l.follow(boot)
-		}
+		exe := l.follow(boot)
 		l.mu.Lock()
-		l.asking = false
 		if exe != "" {
 			l.server, l.tried = exe, time.Time{}
+		} else {
+			l.tried = time.Now()
 		}
 		l.mu.Unlock()
 		if exe != "" {
@@ -85,13 +82,19 @@ func (l *CLI) Path() string {
 }
 
 // Known returns the rex Path would run without asking anything: the fixed
-// one or the followed server's, "" when neither is known yet.
+// one or the followed server's, "" when neither is known yet (or the
+// followed one was removed by an update).
 func (l *CLI) Known() string {
 	if l.Fixed != "" {
 		return l.Fixed
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.server != "" {
+		if _, err := os.Stat(l.server); err != nil {
+			l.server = ""
+		}
+	}
 	return l.server
 }
 

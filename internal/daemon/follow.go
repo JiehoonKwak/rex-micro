@@ -74,6 +74,9 @@ func (d *daemon) onSnapshot(s snapshot) {
 	d.eng.SetPanes(d.panes, d.slots)
 	d.followContext()
 	d.render(false)
+	if d.eng.KeysShown() {
+		d.onKeys(true) // an Agent Key's agent or message may have changed
+	}
 }
 
 // pollFront watches which app is in front and hands each change to the loop.

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -127,5 +128,27 @@ func TestCLIWithoutAnyRex(t *testing.T) {
 	l := &CLI{Bootstrap: func() string { return "" }}
 	if got := l.Path(); got != "rex" {
 		t.Fatal(got)
+	}
+}
+
+// The daemon starts its local watcher and the hosts listing at once: while
+// the first caller asks the server, the others must wait for its answer, not
+// start a long-lived rex on the bootstrap one.
+func TestConcurrentCallersAllGetTheFollowedServer(t *testing.T) {
+	dir := t.TempDir()
+	boot := writeFile(t, filepath.Join(dir, "rex"), "#!/bin/sh\nsleep 0.3\nprintf '{\"pid\":7,\"you\":{\"transport\":\"unix\"}}'\n")
+	exe := writeFile(t, filepath.Join(dir, "rex-server"), "")
+	l := &CLI{Bootstrap: func() string { return boot }, Exe: func(int) (string, error) { return exe, nil }}
+	var wg sync.WaitGroup
+	got := make([]string, 4)
+	for i := range got {
+		wg.Add(1)
+		go func() { defer wg.Done(); got[i] = l.Path() }()
+	}
+	wg.Wait()
+	for i, g := range got {
+		if g != exe {
+			t.Errorf("caller %d got %s, want the server's %s", i, g, exe)
+		}
 	}
 }

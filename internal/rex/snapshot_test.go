@@ -38,11 +38,13 @@ var fakeServer = map[string]any{
 		map[string]any{"client_id": "client:phone", "updated_at": "2026-11-06T00:00:11Z"},
 		map[string]any{"client_id": "client:app", "updated_at": "2026-11-06T00:00:05Z"},
 	}},
-	// Claude's own record says working while a subagent (a child record
-	// without app) waits on the user: the pane must show blocked.
+	// Claude's own record says working while two subagents (child records
+	// without app) wait on the user: the pane must show blocked, with the
+	// newer one's message and kind although Rex lists the older first.
 	"program_status:bB": map[string]any{"records": []any{
-		map[string]any{"app": "claude-code", "state": "working"},
-		map[string]any{"id": "agent-1", "state": "blocked"},
+		map[string]any{"app": "claude-code", "state": "working", "updated_at": "2026-11-06T00:00:01Z"},
+		map[string]any{"id": "agent-1", "state": "blocked", "kind": "permission", "msg": "Allow Bash?", "updated_at": "2026-11-06T00:00:02Z"},
+		map[string]any{"id": "agent-2", "state": "blocked", "kind": "question", "msg": "Confirm deployment?", "updated_at": "2026-11-06T00:00:09Z"},
 	}},
 }
 
@@ -278,7 +280,8 @@ func TestSnapshotScriptFindsShownPaneAndPrograms(t *testing.T) {
 		t.Fatalf("current = %+v", cur)
 	}
 	for _, p := range panes {
-		if p.Block == "bB" && (p.Program != "lazygit" || p.App != "claude-code" || p.State != "blocked" || p.SessionIndex != 2) {
+		if p.Block == "bB" && (p.Program != "lazygit" || p.App != "claude-code" || p.State != "blocked" || p.SessionIndex != 2 ||
+			p.Msg != "Confirm deployment?" || p.Kind != "question") {
 			t.Fatalf("bB = %+v", p)
 		}
 		if strings.HasSuffix(p.Block, "2") && (p.Focused || p.Program != "") {

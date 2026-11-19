@@ -33,7 +33,8 @@ local function base(path) return ((path or ""):match("([^/]+)$") or ""):gsub("^%
 
 -- A terminal holds one status record per id: the program's own (no id) and
 -- one per child, such as each Claude subagent. Children without `app` take it
--- from the root. The pane shows the most urgent record.
+-- from the root. The pane shows the most urgent record, the newest of equally
+-- urgent ones (Rex lists them by id, not time), with its message and kind.
 local function agent_state(pane, records)
   local app, best = "", nil
   for _, r in ipairs(records or {}) do
@@ -41,7 +42,8 @@ local function agent_state(pane, records)
   end
   for _, r in ipairs(records or {}) do
     local rapp = r.effective_app or r.app or app
-    if rapp ~= "" and (best == nil or (urgency[r.state or "idle"] or 3) < (urgency[best.state or "idle"] or 3)) then
+    local ur, ub = urgency[r.state or "idle"] or 3, best and (urgency[best.state or "idle"] or 3)
+    if rapp ~= "" and (best == nil or ur < ub or (ur == ub and (r.updated_at or "") > (best.updated_at or ""))) then
       best = r
       if app == "" then app = rapp end
     end
