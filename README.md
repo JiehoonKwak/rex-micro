@@ -52,8 +52,10 @@ first layer. If you remapped a key in Input, for example MIC to a dictation
 shortcut, that key keeps typing its shortcut, and `rex-micro test` lists it as
 handled by the device.
 
-Requirements: macOS 13 or later, Rex with its `rex` CLI on `PATH`, and a
-Codex Micro connected by USB-C or Bluetooth.
+Requirements: macOS 13 or later, the Rex app, and a Codex Micro connected by
+USB-C or Bluetooth. rex-micro runs the `rex` CLI of the Rex server that is
+running, so it always matches the server's version, even right after a Rex
+update; `REX_MICRO_REX=/path/to/rex` overrides that.
 
 <details>
 <summary>Without Homebrew</summary>

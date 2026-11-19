@@ -49,7 +49,7 @@ func edit() error {
 		disk = t
 		return nil
 	}}
-	rc := &rex.Client{Runner: rex.ExecRunner{Path: daemon.RexPath()}, App: cfg.Rex.App}
+	rc := &rex.Client{Runner: rex.ExecRunner{CLI: daemon.RexCLI()}, App: cfg.Rex.App}
 	opts.Actions = rexActions(rc)
 	if panes, err := rc.Snapshot(); err == nil {
 		seen := map[string]bool{}
@@ -134,7 +134,7 @@ func rexActions(rc *rex.Client) []editor.RexAction {
 	var out []editor.RexAction
 	seen := map[string]bool{}
 	add := func(args ...string) {
-		raw, err := rex.Command(context.Background(), daemon.RexPath(), append([]string{"actions", "--json"}, args...)...).Output()
+		raw, err := rex.Command(context.Background(), daemon.RexCLI().Path(), append([]string{"actions", "--json"}, args...)...).Output()
 		if err != nil {
 			return
 		}

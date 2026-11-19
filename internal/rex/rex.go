@@ -40,17 +40,28 @@ func Command(ctx context.Context, path string, args ...string) *exec.Cmd {
 	return exec.CommandContext(ctx, path, append([]string{"--autostart=false"}, args...)...)
 }
 
-// ExecRunner runs a real rex binary through Command.
-type ExecRunner struct{ Path string }
+// ExecRunner runs the rex that CLI names, through Command.
+type ExecRunner struct{ CLI *CLI }
+
+func (r ExecRunner) path() string {
+	if r.CLI == nil {
+		return "rex"
+	}
+	return r.CLI.Path()
+}
 
 func (r ExecRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]byte, error) {
-	cmd := Command(ctx, r.Path, args...)
+	cmd := Command(ctx, r.path(), args...)
 	if stdin != nil {
 		cmd.Stdin = bytes.NewReader(stdin)
 	}
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) {
+			r.CLI.Forget() // rex did not start: it may have moved
+		}
 		msg := strings.TrimSpace(errb.String())
 		if msg == "" {
 			msg = err.Error()
@@ -61,8 +72,11 @@ func (r ExecRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]by
 }
 
 // Stream runs rex and calls line with each line it prints, until it exits.
+// A stream ends when the server goes away, so the next rex is looked up
+// afresh: the server that comes back may be a newer Rex.
 func (r ExecRunner) Stream(ctx context.Context, stdin []byte, line func([]byte), args ...string) error {
-	cmd := Command(ctx, r.Path, args...)
+	defer r.CLI.Forget()
+	cmd := Command(ctx, r.path(), args...)
 	cmd.Stdin = bytes.NewReader(stdin)
 	errb := &tail{}
 	cmd.Stderr = errb
@@ -640,6 +654,22 @@ func (c *Client) SendText(block, text string) error {
 func (c *Client) CLI(args ...string) error {
 	_, err := c.run(nil, args...)
 	return err
+}
+
+// ServerVersion reports the version of the Rex server rex reaches, e.g.
+// 0.1.0-preview.21.
+func (c *Client) ServerVersion() (string, error) {
+	out, err := c.run(nil, "server", "status", "--json")
+	if err != nil {
+		return "", err
+	}
+	var st struct {
+		Version string `json:"rex_version"`
+	}
+	if err := json.Unmarshal(out, &st); err != nil {
+		return "", fmt.Errorf("parse server status: %w", err)
+	}
+	return st.Version, nil
 }
 
 // Version reports the rex CLI version, proving rex is installed and reachable.

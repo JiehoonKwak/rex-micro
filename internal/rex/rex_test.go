@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sync"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -33,7 +33,7 @@ func TestExecRunnerNeverStartsAServer(t *testing.T) {
 	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho \"$@\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	out, err := ExecRunner{Path: fake}.Run(context.Background(), nil, "session", "list")
+	out, err := ExecRunner{CLI: &CLI{Fixed: fake}}.Run(context.Background(), nil, "session", "list")
 	if err != nil || strings.TrimSpace(string(out)) != "--autostart=false session list" {
 		t.Fatalf("%q %v", out, err)
 	}

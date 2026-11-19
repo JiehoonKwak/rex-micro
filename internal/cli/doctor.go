@@ -46,14 +46,22 @@ func doctor() int {
 	}
 
 	// Rex.
-	rc := &rex.Client{Runner: rex.ExecRunner{Path: daemon.RexPath()}}
+	rc := &rex.Client{Runner: rex.ExecRunner{CLI: daemon.RexCLI()}}
 	if cfg != nil {
 		rc.App = cfg.Rex.App
 	}
+	cliPath := daemon.RexCLI().Path()
 	if v, err := rc.Version(); err != nil {
 		c.fail("rex", "the rex CLI is not reachable: "+err.Error())
 	} else {
-		c.ok("rex", firstLine(v))
+		c.ok("rex", firstLine(v)+" ("+cliPath+")")
+		if sv, err := rc.ServerVersion(); err != nil {
+			c.fail("rex server", err.Error())
+		} else if cv := strings.TrimPrefix(firstLine(v), "rex "); cv != sv {
+			c.warn("rex server", "server is "+sv+" but the CLI is "+cv+"; set REX_MICRO_REX to the server's rex, or unset it to follow the server")
+		} else {
+			c.ok("rex server", sv)
+		}
 		if app, err := rc.AppClient(); err != nil {
 			c.fail("rex app", err.Error())
 		} else {
@@ -116,6 +124,9 @@ func doctor() int {
 		}
 		if t, err := time.Parse(time.RFC3339, st.Foreign); err == nil && time.Since(t) < 2*time.Minute {
 			c.fail("other app", fmt.Sprintf("another app changed the Agent Key lights %s ago; remove ChatGPT from Input Monitoring and restart it, and quit Work Louder Input", time.Since(t).Round(time.Second)))
+		}
+		if st.RexCLI != "" && st.RexCLI != cliPath {
+			c.warn("daemon rex cli", "the daemon runs "+st.RexCLI+", this shell "+cliPath+"; the daemon follows the server again once Rex restarts")
 		}
 		if st.RexErr != "" {
 			c.fail("daemon rex", st.RexErr)

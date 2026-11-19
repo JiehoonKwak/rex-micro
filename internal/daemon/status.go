@@ -57,6 +57,8 @@ type Status struct {
 	Config     string       `json:"config"`
 	ConfigErr  string       `json:"config_error,omitempty"`
 	RexErr     string       `json:"rex_error,omitempty"`
+	// RexCLI is the rex executable the daemon runs (rex.CLI).
+	RexCLI string `json:"rex_cli,omitempty"`
 	LastErr    string       `json:"last_error,omitempty"`
 	// Foreign is when another app last changed the pad's lights (RFC 3339).
 	Foreign string `json:"foreign_lighting,omitempty"`
@@ -93,5 +95,8 @@ func (d *daemon) snapshotStatus() Status {
 	s.Selected = d.eng.Selected()
 	s.Paused = d.pauses > 0
 	s.ConfigErr = d.cfgErr
+	if r, ok := d.rex.Runner.(rex.ExecRunner); ok && r.CLI != nil {
+		s.RexCLI = r.CLI.Path()
+	}
 	return s
 }

@@ -55,5 +55,5 @@ func Run(cfgPath string, logger *log.Logger, update func() (bool, error)) error 
 	if err != nil {
 		return err
 	}
-	return Start(Options{ConfigPath: cfgPath, Logger: logger, Device: dev, Runner: rex.ExecRunner{Path: RexPath()}, Stop: stop, Update: update, Self: self})
+	return Start(Options{ConfigPath: cfgPath, Logger: logger, Device: dev, Runner: rex.ExecRunner{CLI: RexCLI()}, Stop: stop, Update: update, Self: self})
 }

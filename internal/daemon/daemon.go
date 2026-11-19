@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -220,24 +221,34 @@ func Start(opts Options) error {
 	return err
 }
 
-func RexPath() string {
-	if p := os.Getenv("REX_MICRO_REX"); p != "" {
-		return p
-	}
+// rexCLI is the process's one rex.CLI; RexCLI hands it out.
+var rexCLI = sync.OnceValue(func() *rex.CLI {
+	return &rex.CLI{Fixed: os.Getenv("REX_MICRO_REX"), Bootstrap: bootstrapRex, Exe: macos.ProcessPath}
+})
+
+// RexCLI is where every rex call finds the rex executable.
+func RexCLI() *rex.CLI { return rexCLI() }
+
+// rexBundleID identifies the Rex Mac app, under any name or folder.
+const rexBundleID = "com.superlogical.rex"
+
+// bootstrapRex names a rex to reach the server with before rex.CLI follows
+// the server's own executable: rex on PATH, else the CLI inside the Rex app
+// wherever LaunchServices finds it. launchd starts agents with a short PATH,
+// so the app is the usual answer for the service.
+func bootstrapRex() string {
 	if p, err := exec.LookPath("rex"); err == nil {
 		return p
 	}
-	// launchd starts agents with a minimal PATH; look where Rex installs its CLI.
-	home, _ := os.UserHomeDir()
-	for _, p := range []string{
-		filepath.Join(home, "Library/Application Support/com.superlogical.rex/RexServer/Versions/Current/Rex Server.app/Contents/MacOS/rex"),
-		"/opt/homebrew/bin/rex", "/usr/local/bin/rex", filepath.Join(home, ".local/bin/rex"),
-	} {
-		if _, err := os.Stat(p); err == nil {
-			return p
+	for _, app := range macos.AppPaths(rexBundleID) {
+		found, _ := filepath.Glob(filepath.Join(app, "Contents", "Helpers", "*", "Contents", "MacOS", "rex"))
+		for _, p := range found {
+			if st, err := os.Stat(p); err == nil && st.Mode().IsRegular() {
+				return p
+			}
 		}
 	}
-	return "rex"
+	return ""
 }
 
 func (d *daemon) loop(stop <-chan struct{}, update func() (bool, error), logger *log.Logger) error {

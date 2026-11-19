@@ -386,12 +386,12 @@ func actions() error {
 	if err != nil {
 		return err
 	}
-	rc := &rex.Client{Runner: rex.ExecRunner{Path: daemon.RexPath()}, App: cfg.Rex.App}
+	rc := &rex.Client{Runner: rex.ExecRunner{CLI: daemon.RexCLI()}, App: cfg.Rex.App}
 	app, err := rc.AppClient()
 	if err != nil {
 		return err
 	}
-	cmd := rex.Command(context.Background(), daemon.RexPath(), "actions", "-C", app)
+	cmd := rex.Command(context.Background(), daemon.RexCLI().Path(), "actions", "-C", app)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	return cmd.Run()
 }
