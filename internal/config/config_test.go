@@ -58,6 +58,7 @@ func TestUncommentedExamplesParse(t *testing.T) {
 		}
 		b.WriteString(line + "\n")
 	}
+	// The MIC example replaces the MIC line, as its comment says.
 	text := strings.Replace(b.String(), "MIC   = { builtin = \"none\" }\n", "", 1)
 	cfg, err := Parse(text)
 	if err != nil {

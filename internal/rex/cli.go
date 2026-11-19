@@ -30,7 +30,8 @@ type CLI struct {
 
 	mu     sync.Mutex
 	server string    // the followed server's executable, "" until one answered
-	tried  time.Time // when following last failed
+	tried  time.Time // when following last started without success
+	asking bool      // a follow is under way; others use the bootstrap meanwhile
 }
 
 // Path returns the rex to run: the followed server's executable, else the
@@ -40,27 +41,42 @@ func (l *CLI) Path() string {
 		return l.Fixed
 	}
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	if l.server != "" {
 		if _, err := os.Stat(l.server); err == nil {
+			defer l.mu.Unlock()
 			return l.server
 		}
 		l.server = "" // removed by an update; follow the new server
-	}
-	boot := ""
-	if l.Bootstrap != nil {
-		boot = l.Bootstrap()
 	}
 	retry := l.Retry
 	if retry == 0 {
 		retry = 5 * time.Second
 	}
-	if boot != "" && l.Exe != nil && time.Since(l.tried) >= retry {
-		if exe := l.follow(boot); exe != "" {
-			l.server = exe
+	ask := !l.asking && l.Exe != nil && time.Since(l.tried) >= retry
+	if ask {
+		l.asking, l.tried = true, time.Now()
+	}
+	l.mu.Unlock()
+
+	boot := ""
+	if l.Bootstrap != nil {
+		boot = l.Bootstrap()
+	}
+	if ask {
+		// Unlocked: asking takes up to seconds when Rex does not answer.
+		exe := ""
+		if boot != "" {
+			exe = l.follow(boot)
+		}
+		l.mu.Lock()
+		l.asking = false
+		if exe != "" {
+			l.server, l.tried = exe, time.Time{}
+		}
+		l.mu.Unlock()
+		if exe != "" {
 			return exe
 		}
-		l.tried = time.Now()
 	}
 	if boot == "" {
 		return "rex"
@@ -68,8 +84,21 @@ func (l *CLI) Path() string {
 	return boot
 }
 
-// follow asks the local server, through boot, for its process and returns
-// that process's executable, or "" when no server answers.
+// Known returns the rex Path would run without asking anything: the fixed
+// one or the followed server's, "" when neither is known yet.
+func (l *CLI) Known() string {
+	if l.Fixed != "" {
+		return l.Fixed
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.server
+}
+
+// follow asks the server, through boot, for its process and returns that
+// process's executable, or "" when no server answers. Only a server reached
+// over its local socket runs on this Mac: REX_SERVER may name another host,
+// whose pid means nothing here.
 func (l *CLI) follow(boot string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -79,8 +108,11 @@ func (l *CLI) follow(boot string) string {
 	}
 	var st struct {
 		PID int `json:"pid"`
+		You struct {
+			Transport string `json:"transport"`
+		} `json:"you"`
 	}
-	if json.Unmarshal(out, &st) != nil || st.PID <= 0 {
+	if json.Unmarshal(out, &st) != nil || st.PID <= 0 || st.You.Transport != "unix" {
 		return ""
 	}
 	exe, err := l.Exe(st.PID)
@@ -102,11 +134,4 @@ func (l *CLI) Forget() {
 	l.mu.Lock()
 	l.server, l.tried = "", time.Time{}
 	l.mu.Unlock()
-}
-
-// Following reports the server executable being followed, "" for none.
-func (l *CLI) Following() string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.server
 }

@@ -14,7 +14,7 @@ import (
 func fakeBoot(t *testing.T, dir string) (boot, pidFile, calls string) {
 	t.Helper()
 	boot, pidFile, calls = filepath.Join(dir, "rex"), filepath.Join(dir, "pid"), filepath.Join(dir, "calls")
-	script := fmt.Sprintf("#!/bin/sh\necho x >> %q\n[ \"$2 $3 $4\" = \"server status --json\" ] || exit 2\n[ -f %q ] || exit 1\nprintf '{\"pid\":%%s}' \"$(cat %q)\"\n", calls, pidFile, pidFile)
+	script := fmt.Sprintf("#!/bin/sh\necho x >> %q\n[ \"$2 $3 $4\" = \"server status --json\" ] || exit 2\n[ -f %q ] || exit 1\nprintf '{\"pid\":%%s,\"you\":{\"transport\":\"unix\"}}' \"$(cat %q)\"\n", calls, pidFile, pidFile)
 	if err := os.WriteFile(boot, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -93,9 +93,26 @@ func TestStreamEndForgetsTheServer(t *testing.T) {
 	if got := l.Path(); got != exe {
 		t.Fatalf("not following: %s", got)
 	}
+	_ = ExecRunner{CLI: l}.Stream(t.Context(), nil, func([]byte) {}, "-S", "m1", "do", "-")
+	if l.Known() != exe {
+		t.Fatal("another host's stream ending dropped this Mac's server")
+	}
 	_ = ExecRunner{CLI: l}.Stream(t.Context(), nil, func([]byte) {}, "do", "-")
-	if l.Following() != "" {
+	if l.Known() != "" {
 		t.Fatal("a stream that ended (the server went away) kept the old server")
+	}
+}
+
+// REX_SERVER can point rex at another host; its pid is not a process here.
+func TestCLIFollowsOnlyALocalServer(t *testing.T) {
+	dir := t.TempDir()
+	boot := writeFile(t, filepath.Join(dir, "rex"), "#!/bin/sh\nprintf '{\"pid\":7,\"you\":{\"transport\":\"tailscale\"}}'\n")
+	l := &CLI{Bootstrap: func() string { return boot }, Exe: func(int) (string, error) {
+		t.Fatal("looked up a remote server's pid on this Mac")
+		return "", nil
+	}}
+	if got := l.Path(); got != boot {
+		t.Fatalf("remote server followed: %s", got)
 	}
 }
 

@@ -126,7 +126,11 @@ func doctor() int {
 			c.fail("other app", fmt.Sprintf("another app changed the Agent Key lights %s ago; remove ChatGPT from Input Monitoring and restart it, and quit Work Louder Input", time.Since(t).Round(time.Second)))
 		}
 		if st.RexCLI != "" && st.RexCLI != cliPath {
-			c.warn("daemon rex cli", "the daemon runs "+st.RexCLI+", this shell "+cliPath+"; the daemon follows the server again once Rex restarts")
+			hint := "; the daemon follows the server again once Rex restarts"
+			if st.RexCLIFixed {
+				hint = "; REX_MICRO_REX pins the daemon's (`rex-micro service install` again after changing it)"
+			}
+			c.warn("daemon rex cli", "the daemon runs "+st.RexCLI+", this shell "+cliPath+hint)
 		}
 		if st.RexErr != "" {
 			c.fail("daemon rex", st.RexErr)

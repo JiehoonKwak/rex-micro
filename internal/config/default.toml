@@ -117,8 +117,8 @@ ACT06 = { action = "pane.zoom", label = "Zoom pane" }         # FAST cap
 ACT07 = { key = "enter", label = "Approve" }                  # APPROVE cap
 ACT08 = { key = "escape", label = "Reject" }                  # REJECT cap
 ACT09 = { action = "pane.split.auto", label = "Split pane" }  # SPLIT cap
-# MIC: bind your dictation app. One on a modifier hotkey, held as long as MIC
-# is, tells a tap (toggle) from a hold (push-to-talk) itself:
+# MIC: replace this line with your dictation app. One on a modifier hotkey,
+# held as long as MIC is, tells a tap (toggle) from a hold (push-to-talk):
 #   MIC = { shortcut = "right_option", held = true, label = "Dictation" }
 MIC   = { builtin = "none" }
 ACT12 = { key = "enter", label = "Send" }                     # CODEX cap

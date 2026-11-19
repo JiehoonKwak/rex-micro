@@ -72,10 +72,13 @@ func (r ExecRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]by
 }
 
 // Stream runs rex and calls line with each line it prints, until it exits.
-// A stream ends when the server goes away, so the next rex is looked up
-// afresh: the server that comes back may be a newer Rex.
+// A stream to this Mac's server ends when that server goes away, so the next
+// rex is looked up afresh: the server that comes back may be a newer Rex. A
+// stream to another host (-S) says nothing about this Mac's server.
 func (r ExecRunner) Stream(ctx context.Context, stdin []byte, line func([]byte), args ...string) error {
-	defer r.CLI.Forget()
+	if len(args) == 0 || args[0] != "-S" {
+		defer r.CLI.Forget()
+	}
 	cmd := Command(ctx, r.path(), args...)
 	cmd.Stdin = bytes.NewReader(stdin)
 	errb := &tail{}
@@ -134,8 +137,8 @@ type Pane struct {
 	Msg string `json:"msg,omitempty"`
 	// Kind is what a blocked agent waits for: permission, question or auth
 	// ("" when it did not say).
-	Kind string `json:"kind,omitempty"`
-	Focused      bool      `json:"focused"` // focused block of its session's active window
+	Kind    string `json:"kind,omitempty"`
+	Focused bool   `json:"focused"` // focused block of its session's active window
 	// Program is the foreground program of a focused terminal, e.g. zsh,
 	// lazygit, claude. Only focused panes report it.
 	Program string `json:"program,omitempty"`

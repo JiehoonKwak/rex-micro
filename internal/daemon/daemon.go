@@ -241,8 +241,10 @@ func bootstrapRex() string {
 		return p
 	}
 	for _, app := range macos.AppPaths(rexBundleID) {
-		found, _ := filepath.Glob(filepath.Join(app, "Contents", "Helpers", "*", "Contents", "MacOS", "rex"))
-		for _, p := range found {
+		helpers := filepath.Join(app, "Contents", "Helpers")
+		entries, _ := os.ReadDir(helpers)
+		for _, e := range entries {
+			p := filepath.Join(helpers, e.Name(), "Contents", "MacOS", "rex")
 			if st, err := os.Stat(p); err == nil && st.Mode().IsRegular() {
 				return p
 			}
