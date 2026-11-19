@@ -690,6 +690,15 @@ func (c *Client) CLI(args ...string) error {
 	return err
 }
 
+// CLIPath is the rex executable this client runs, "" when its runner is not
+// the real CLI (tests).
+func (c *Client) CLIPath() string {
+	if r, ok := c.Runner.(ExecRunner); ok && r.CLI != nil {
+		return r.CLI.Path()
+	}
+	return ""
+}
+
 // ServerVersion reports the version of the Rex server rex reaches, e.g.
 // 0.1.0-preview.21.
 func (c *Client) ServerVersion() (string, error) {

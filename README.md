@@ -172,6 +172,11 @@ sidebar's Activity order), sessions or named slots. The
 [default config](internal/config/default.toml) shows every option with an
 example; `rex-micro config default` prints it.
 
+A shell binding learns the key, the layer and the selected agent's pane
+through `REX_MICRO_*` variables. [Recipes](docs/recipes.md) use them to open
+the dev server an agent started, on any host, or to approve only a
+permission prompt.
+
 Shortcut bindings need Accessibility: the daemon asks for it the first time
 your config uses one, and `rex-micro doctor` checks it.
 

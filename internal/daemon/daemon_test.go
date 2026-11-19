@@ -375,7 +375,7 @@ func TestShellTimeoutStopsChildren(t *testing.T) {
 	shellTimeout = 200 * time.Millisecond
 	defer func() { shellTimeout = old }()
 	marker := filepath.Join(t.TempDir(), "late")
-	err := executor{}.Shell("/bin/sh -c 'sleep 1; touch "+marker+"'; :", false)
+	err := executor{}.Shell("/bin/sh -c 'sleep 1; touch "+marker+"'; :", false, nil)
 	if err == nil {
 		t.Fatal("expected a timeout error")
 	}
@@ -541,5 +541,23 @@ func TestStopRunsReleaseWhileOneActionHangs(t *testing.T) {
 	defer mu.Unlock()
 	if got := strings.Join(ran, ","); got != "mic-on,mic-off" {
 		t.Fatalf("ran %s before exit", got)
+	}
+}
+
+// The shell gets the binding's names on top of the daemon's own environment.
+func TestShellPassesItsEnvironment(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "env")
+	t.Setenv("REX_MICRO_TEST_INHERITED", "yes")
+	t.Setenv("REX_SESSION", "session:the-pane-rex-micro-ran-in")
+	t.Setenv("REX_BLOCK", "block:the-pane-rex-micro-ran-in")
+	err := executor{}.Shell("env > '"+out+"'", false, []string{"REX_MICRO_AGENT_MSG=it's \"quoted\" $HOME"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(out)
+	got := string(b)
+	if !strings.Contains(got, "REX_MICRO_AGENT_MSG=it's \"quoted\" $HOME\n") || !strings.Contains(got, "REX_MICRO_TEST_INHERITED=yes") ||
+		strings.Contains(got, "the-pane-rex-micro-ran-in") {
+		t.Fatalf("env:\n%s", got)
 	}
 }

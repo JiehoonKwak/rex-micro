@@ -39,7 +39,9 @@ Settings included (`client.setting.*`); bind the action rather than a shortcut
 the user gave it in Rex, which works only on that Mac. Actions without a dot
 are the user's own `rex.action` definitions in
 `~/.config/rex/init.lua`, where a complex behaviour belongs, bound with
-`{ action = "name" }`. For a layer `match`, `rex-micro status --json` shows the
+`{ action = "name" }`. A shell binding can act on the selected agent through
+`REX_MICRO_AGENT_*` variables; [recipes](https://github.com/JiehoonKwak/rex-micro/blob/main/docs/recipes.md) lists
+them with tested recipes. For a layer `match`, `rex-micro status --json` shows the
 exact `front_app` and `program` names.
 
 People can also edit bindings with `rex-micro edit`, a full-screen editor;

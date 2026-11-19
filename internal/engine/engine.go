@@ -34,8 +34,9 @@ type Executor interface {
 	// HoldShortcut presses (down) or releases a shortcut held with a pad key,
 	// at once and with no focus check.
 	HoldShortcut(combo string, down bool) error
-	// Shell runs cmd; it waits for it (keeping effects in order) unless detach.
-	Shell(cmd string, detach bool) error
+	// Shell runs cmd with env (NAME=value entries, see ShellEnv) added to its
+	// environment; it waits for it (keeping effects in order) unless detach.
+	Shell(cmd string, detach bool, env []string) error
 }
 
 // ErrSkipped reports an effect that chose not to act, e.g. a shortcut whose
@@ -513,7 +514,8 @@ func (e *Engine) do(name string, a *config.Action) {
 		e.effect(name, func() error { return e.exec.CLI(args) })
 	case "shell":
 		cmd, detach := a.Shell, a.Detach
-		e.effect(name, func() error { return e.exec.Shell(cmd, detach) })
+		env := ShellEnv(name, e.gesture, e.cfg.Layers[e.layer].Name, e.agentPane()) // as pressed
+		e.effect(name, func() error { return e.exec.Shell(cmd, detach, env) })
 	}
 }
 
@@ -572,6 +574,26 @@ func (e *Engine) pane(block string) *rex.Pane {
 }
 
 // agentPane is the selected agent if it still runs, else the most urgent one.
+// ShellEnv is what a shell binding learns about its press: the key, gesture
+// and active layer, and the selected agent pane (the one key and text
+// bindings with an agent target use). With no agent the REX_MICRO_AGENT_*
+// names are left out, not set empty. The daemon adds REX_MICRO_REX and
+// REX_MICRO_APP. default.toml lists these names; keep the two in step.
+func ShellEnv(key, gesture, layer string, agent *rex.Pane) []string {
+	env := []string{"REX_MICRO_KEY=" + key, "REX_MICRO_GESTURE=" + gesture, "REX_MICRO_LAYER=" + layer}
+	if agent == nil {
+		return env
+	}
+	for _, kv := range [][2]string{
+		{"BLOCK", agent.Block}, {"SESSION", agent.Session}, {"WINDOW", agent.Window}, {"HOST", agent.Host},
+		{"APP", agent.App}, {"STATE", agent.State}, {"KIND", agent.Kind}, {"MSG", agent.Msg},
+		{"LABEL", agent.Label}, {"SESSION_LABEL", agent.SessionLabel},
+	} {
+		env = append(env, "REX_MICRO_AGENT_"+kv[0]+"="+kv[1])
+	}
+	return env
+}
+
 func (e *Engine) agentPane() *rex.Pane {
 	for i := range e.panes {
 		if e.panes[i].Block == e.selected && e.panes[i].Agent() {

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -167,5 +168,22 @@ func TestFormatRoundTrips(t *testing.T) {
 	}
 	if got := bindings["ACT12"].TOML(); got != `{ builtin = "layer.next" }` {
 		t.Errorf("single press form = %s", got)
+	}
+}
+
+// Every binding in docs/recipes.md parses as a key of a layer.
+func TestRecipesParse(t *testing.T) {
+	doc, err := os.ReadFile("../../docs/recipes.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := regexp.MustCompile("(?s)```toml\n(.*?)```").FindAllStringSubmatch(string(doc), -1)
+	if len(blocks) == 0 {
+		t.Fatal("no recipes found")
+	}
+	for _, b := range blocks {
+		if _, err := Parse("[[layer]]\nname = \"r\"\n[layer.keys]\n" + b[1]); err != nil {
+			t.Errorf("recipe %q: %v", b[1], err)
+		}
 	}
 }

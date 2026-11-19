@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -230,14 +231,39 @@ func (x executor) SendKeys(b string, k []string) error            { return x.rex
 func (x executor) SendText(b, t string) error                     { return x.rex.SendText(b, t) }
 func (x executor) CLI(a []string) error                           { return x.rex.CLI(a...) }
 
+// shellBase is the daemon's environment without REX_SESSION and REX_BLOCK:
+// those name the Rex pane the daemon was started from (`rex-micro run` in a
+// pane), and rex would scope a binding's commands to that session.
+func shellBase(environ []string) []string {
+	out := make([]string, 0, len(environ))
+	for _, kv := range environ {
+		if !strings.HasPrefix(kv, "REX_SESSION=") && !strings.HasPrefix(kv, "REX_BLOCK=") {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
 // Shell runs a command. Effects run in order (push-to-talk start before stop),
 // so it waits up to 10 seconds; detach starts it and moves on.
 // shellTimeout bounds a shell binding that does not set detach.
 var shellTimeout = 10 * time.Second
 
-func (x executor) Shell(c string, detach bool) error {
+func (x executor) Shell(c string, detach bool, env []string) error {
+	env = append(shellBase(os.Environ()), env...)
+	if x.rex != nil {
+		// The rex the daemon itself runs, since launchd's PATH has none, and
+		// the app client to name with -C.
+		if p := x.rex.CLIPath(); p != "" {
+			env = append(env, "REX_MICRO_REX="+p)
+		}
+		if app, err := x.rex.AppClient(); err == nil {
+			env = append(env, "REX_MICRO_APP="+app)
+		}
+	}
 	if detach {
 		cmd := exec.Command("/bin/sh", "-c", c)
+		cmd.Env = env
 		cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
 		if err := cmd.Start(); err != nil {
 			return err
@@ -248,6 +274,7 @@ func (x executor) Shell(c string, detach bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), shellTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", c)
+	cmd.Env = env
 	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
 	// Own process group, so a timeout stops the commands the shell started
 	// too; a survivor could otherwise finish after the next key's command.

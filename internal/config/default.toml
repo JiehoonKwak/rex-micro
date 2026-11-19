@@ -96,7 +96,10 @@ layers = "off"
 #   { text = "continue" }                        type text into the selected agent pane
 #   { rex = ["run", "--", "lazygit"] }           any rex CLI arguments
 #   { shell = "open -a Typeless" }               a shell command; effects run in order, so it
-#                                                waits (up to 10s); add detach = true for long ones
+#                                                waits (up to 10s); add detach = true for long ones.
+#                                                It gets REX_MICRO_REX, REX_MICRO_APP, REX_MICRO_KEY,
+#                                                _GESTURE, _LAYER and the selected agent's
+#                                                REX_MICRO_AGENT_* (see the README's recipes)
 #   { builtin = "layer.next" }                   layer.next, layer.prev, layer.<name>, session.<1-9>,
 #                                                agent.show, agent.show_zoom, agent.attention, none,
 #                                                keys.show (this layer's keys on screen; see below)

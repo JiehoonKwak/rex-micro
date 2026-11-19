@@ -15,7 +15,8 @@ import (
 
 type recorder struct {
 	calls []string
-	ctx   string // app/program of the last shortcut
+	ctx   string   // app/program of the last shortcut
+	env   []string // of the last shell command
 }
 
 func (r *recorder) Show(p rex.Pane, zoom bool) error {
@@ -42,7 +43,10 @@ func (r *recorder) CLI(a []string) error {
 	r.calls = append(r.calls, "cli "+strings.Join(a, " "))
 	return nil
 }
-func (r *recorder) Shell(c string, _ bool) error { r.calls = append(r.calls, "shell "+c); return nil }
+func (r *recorder) Shell(c string, _ bool, env []string) error {
+	r.calls, r.env = append(r.calls, "shell "+c), env
+	return nil
+}
 func (r *recorder) Shortcut(c, app, program string) error {
 	r.calls, r.ctx = append(r.calls, "shortcut "+c), app+"/"+program
 	return nil
@@ -532,12 +536,12 @@ type blocker struct {
 	began, release chan struct{}
 }
 
-func (b *blocker) Shell(c string, d bool) error {
+func (b *blocker) Shell(c string, d bool, env []string) error {
 	if c == "slow" {
 		close(b.began)
 		<-b.release
 	}
-	return b.recorder.Shell(c, d)
+	return b.recorder.Shell(c, d, env)
 }
 
 func TestReleaseRunsBesideADownStillRunning(t *testing.T) {
@@ -578,5 +582,57 @@ func TestHeldShortcutFollowsThePadKey(t *testing.T) {
 	want(t, r, "hold right_option down=false")
 	if queued != 1 {
 		t.Fatalf("queued %d effects; held edges must not queue", queued)
+	}
+}
+
+// A shell binding learns its key, gesture and layer, and the selected agent
+// as it was when the key was pressed (the agent a key with target = "agent"
+// would reach), not when the queued command finally runs.
+func TestShellEnvNamesTheSelectedAgentAsPressed(t *testing.T) {
+	cfg, err := config.Parse("[[layer]]\nname = \"base\"\n[layer.keys]\nACT09 = { shell = \"answer\" }\nACT12 = { key = \"y\", target = \"agent\" }\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var queue []func()
+	r := &recorder{}
+	e := New(cfg, r, func(f func(), _ bool) { queue = append(queue, f) }, t.Logf)
+	panes := []rex.Pane{
+		{Block: "b1", Session: "s1", Window: "w1", Host: "BV", App: "codex", State: "blocked", Kind: "question", Msg: "Deploy now?", Label: "api", SessionLabel: "ops"},
+		{Block: "b2", Session: "s2", App: "claude-code", State: "working"},
+	}
+	var a agents.Assigner
+	e.SetPanes(panes, a.Assign(panes, e.cfg.Agents))
+	press(e, "ACT12", t0)
+	press(e, "ACT09", t0)
+	e.selected = "b2" // another agent is shown before the queued command runs
+	for _, f := range queue {
+		f()
+	}
+	if r.calls[0] != `keys "b1" y` {
+		t.Fatalf("the agent target went to %q", r.calls[0])
+	}
+	got := strings.Join(r.env, "\n")
+	for _, kv := range []string{
+		"REX_MICRO_KEY=ACT09", "REX_MICRO_GESTURE=press", "REX_MICRO_LAYER=base",
+		"REX_MICRO_AGENT_BLOCK=b1", "REX_MICRO_AGENT_SESSION=s1", "REX_MICRO_AGENT_WINDOW=w1",
+		"REX_MICRO_AGENT_HOST=BV", "REX_MICRO_AGENT_APP=codex", "REX_MICRO_AGENT_STATE=blocked",
+		"REX_MICRO_AGENT_KIND=question", "REX_MICRO_AGENT_MSG=Deploy now?",
+		"REX_MICRO_AGENT_LABEL=api", "REX_MICRO_AGENT_SESSION_LABEL=ops",
+	} {
+		if !strings.Contains("\n"+got+"\n", "\n"+kv+"\n") {
+			t.Errorf("missing %s in\n%s", kv, got)
+		}
+	}
+}
+
+// With no agent pane, the agent names are absent, not empty, so a script can
+// test for them with ${REX_MICRO_AGENT_BLOCK:?}.
+func TestShellEnvWithoutAnAgent(t *testing.T) {
+	e, r := setup(t, "[[layer]]\nname = \"base\"\n[layer.keys]\nACT09 = { shell = \"answer\" }\n")
+	e.SetPanes([]rex.Pane{{Block: "shell"}}, [agents.Keys]agents.Slot{})
+	press(e, "ACT09", t0)
+	want(t, r, "shell answer")
+	if got := strings.Join(r.env, " "); strings.Contains(got, "REX_MICRO_AGENT_") || !strings.Contains(got, "REX_MICRO_KEY=ACT09") {
+		t.Fatalf("env = %s", got)
 	}
 }
