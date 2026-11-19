@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -71,15 +72,37 @@ func (r ExecRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]by
 	return out.Bytes(), nil
 }
 
+// ErrNewCLI ends a stream that ran on a stand-in rex once the server's own
+// rex became known; the caller starts the stream again on it.
+var ErrNewCLI = errors.New("rex: switching to the server's own rex")
+
 // Stream runs rex and calls line with each line it prints, until it exits.
 // A stream to this Mac's server ends when that server goes away, so the next
 // rex is looked up afresh: the server that comes back may be a newer Rex. A
 // stream to another host (-S) says nothing about this Mac's server.
-func (r ExecRunner) Stream(ctx context.Context, stdin []byte, line func([]byte), args ...string) error {
-	if len(args) == 0 || args[0] != "-S" {
-		defer r.CLI.Forget()
+//
+// A local stream that had to start on the bootstrap rex (the server did not
+// answer the lookup yet) keeps looking, and ends with ErrNewCLI once the
+// server's own rex is known, so a long-lived watcher never stays on a stand-in.
+func (r ExecRunner) Stream(ctx context.Context, stdin []byte, line func([]byte), args ...string) (err error) {
+	local := len(args) == 0 || args[0] != "-S"
+	path := r.path()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var handed atomic.Bool
+	if local {
+		defer func() {
+			if handed.Load() {
+				err = ErrNewCLI
+			} else {
+				r.CLI.Forget()
+			}
+		}()
+		if r.CLI != nil && r.CLI.Known() != path && r.CLI.Exe != nil {
+			go r.CLI.handOver(ctx, path, func() { handed.Store(true); cancel() })
+		}
 	}
-	cmd := Command(ctx, r.path(), args...)
+	cmd := Command(ctx, path, args...)
 	cmd.Stdin = bytes.NewReader(stdin)
 	errb := &tail{}
 	cmd.Stderr = errb
@@ -515,17 +538,20 @@ func (c *Client) watchOne(ctx context.Context, host, pref string, every time.Dur
 		}
 	}
 	var bad error
-	err := s.Stream(ctx, c.scriptFor(pref, every), func(line []byte) {
-		if len(line) == 0 || (line[0] != '[' && line[0] != '{') {
-			return // rex's "listening" banner
-		}
-		panes, err := parsePanes(line)
-		if err != nil {
-			bad = err
-			return
-		}
-		emit(panes)
-	}, on(host, "do", "-", "--all")...)
+	err := ErrNewCLI
+	for errors.Is(err, ErrNewCLI) && ctx.Err() == nil {
+		err = s.Stream(ctx, c.scriptFor(pref, every), func(line []byte) {
+			if len(line) == 0 || (line[0] != '[' && line[0] != '{') {
+				return // rex's "listening" banner
+			}
+			panes, err := parsePanes(line)
+			if err != nil {
+				bad = err
+				return
+			}
+			emit(panes)
+		}, on(host, "do", "-", "--all")...)
+	}
 	if ctx.Err() != nil {
 		return nil
 	}

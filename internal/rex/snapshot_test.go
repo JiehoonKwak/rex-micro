@@ -40,11 +40,13 @@ var fakeServer = map[string]any{
 	}},
 	// Claude's own record says working while two subagents (child records
 	// without app) wait on the user: the pane must show blocked, with the
-	// newer one's message and kind although Rex lists the older first.
+	// newer one's message and kind although Rex lists the older first. The
+	// times carry different offsets (a DST change): as strings the older
+	// one sorts later.
 	"program_status:bB": map[string]any{"records": []any{
 		map[string]any{"app": "claude-code", "state": "working", "updated_at": "2026-11-06T00:00:01Z"},
-		map[string]any{"id": "agent-1", "state": "blocked", "kind": "permission", "msg": "Allow Bash?", "updated_at": "2026-11-06T00:00:02Z"},
-		map[string]any{"id": "agent-2", "state": "blocked", "kind": "question", "msg": "Confirm deployment?", "updated_at": "2026-11-06T00:00:09Z"},
+		map[string]any{"id": "agent-1", "state": "blocked", "kind": "permission", "msg": "Allow Bash?", "updated_at": "2026-11-01T01:59:45.5-04:00"},
+		map[string]any{"id": "agent-2", "state": "blocked", "kind": "question", "msg": "Confirm deployment?", "updated_at": "2026-11-01T01:00:12-05:00"},
 	}},
 }
 

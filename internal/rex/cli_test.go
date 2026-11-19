@@ -1,6 +1,7 @@
 package rex
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -150,5 +151,49 @@ func TestConcurrentCallersAllGetTheFollowedServer(t *testing.T) {
 		if g != exe {
 			t.Errorf("caller %d got %s, want the server's %s", i, g, exe)
 		}
+	}
+}
+
+// Rex answers only after the local watcher started on the bootstrap rex: the
+// watcher moves to the server's own rex instead of staying on the stand-in
+// for the rest of the server's run.
+func TestLocalWatcherHandsOverToTheServersRex(t *testing.T) {
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "pid")
+	stream := func(block string) string {
+		return fmt.Sprintf("[ \"$2\" = do ] && { printf '[{\"session\":\"s\",\"block\":\"%s\"}]\\n'; exec sleep 30; }\n", block)
+	}
+	boot := writeFile(t, filepath.Join(dir, "rex"), "#!/bin/sh\n"+
+		fmt.Sprintf("[ \"$2 $3\" = \"server status\" ] && { [ -f %q ] || exit 1; printf '{\"pid\":7,\"you\":{\"transport\":\"unix\"}}'; exit 0; }\n", pidFile)+
+		stream("boot"))
+	exe := writeFile(t, filepath.Join(dir, "rex-server"), "#!/bin/sh\n"+stream("server"))
+	l := &CLI{Bootstrap: func() string { return boot }, Exe: func(int) (string, error) { return exe, nil }, Retry: 50 * time.Millisecond}
+	c := &Client{Runner: ExecRunner{CLI: l}}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	seen := make(chan string, 8)
+	go func() {
+		_ = c.watchOne(ctx, "", "", time.Hour, nil, func(p []Pane) {
+			if len(p) == 1 {
+				seen <- p[0].Block
+			}
+		})
+	}()
+	wait := func(want string) {
+		t.Helper()
+		select {
+		case got := <-seen:
+			if got != want {
+				t.Fatalf("snapshot from %s, want %s", got, want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("no snapshot from %s", want)
+		}
+	}
+	wait("boot") // the server did not answer the lookup yet
+	writeFile(t, pidFile, "7")
+	wait("server")
+	if l.Known() != exe {
+		t.Fatalf("handed over but forgot the server: %q", l.Known())
 	}
 }

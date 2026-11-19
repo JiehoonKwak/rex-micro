@@ -31,6 +31,26 @@ end
 -- "/bin/zsh" -> "zsh"; a login shell's argv0 "-zsh" -> "zsh"
 local function base(path) return ((path or ""):match("([^/]+)$") or ""):gsub("^%-", "") end
 
+-- instant turns an RFC 3339 time into seconds since 1970, so times with
+-- different offsets or fractions compare correctly; 0 when unreadable.
+local function instant(s)
+  local y, mo, d, h, mi, sec, frac, tz = (s or ""):match("^(%d+)-(%d+)-(%d+)[Tt ](%d+):(%d+):(%d+)(%.?%d*)(.*)$")
+  if not y then return 0 end
+  y, mo, d = tonumber(y), tonumber(mo), tonumber(d)
+  if mo <= 2 then y = y - 1 end
+  local era = math.floor(y / 400)
+  local yoe = y - era * 400
+  local doy = math.floor((153 * ((mo + 9) % 12) + 2) / 5) + d - 1
+  local days = era * 146097 + yoe * 365 + math.floor(yoe / 4) - math.floor(yoe / 100) + doy - 719468
+  local t = days * 86400 + tonumber(h) * 3600 + tonumber(mi) * 60 + tonumber(sec) + (tonumber("0" .. frac) or 0)
+  local sign, oh, om = tz:match("^([+-])(%d%d):?(%d%d)$")
+  if sign then
+    local off = tonumber(oh) * 3600 + tonumber(om) * 60
+    t = sign == "+" and t - off or t + off
+  end
+  return t
+end
+
 -- A terminal holds one status record per id: the program's own (no id) and
 -- one per child, such as each Claude subagent. Children without `app` take it
 -- from the root. The pane shows the most urgent record, the newest of equally
@@ -43,7 +63,7 @@ local function agent_state(pane, records)
   for _, r in ipairs(records or {}) do
     local rapp = r.effective_app or r.app or app
     local ur, ub = urgency[r.state or "idle"] or 3, best and (urgency[best.state or "idle"] or 3)
-    if rapp ~= "" and (best == nil or ur < ub or (ur == ub and (r.updated_at or "") > (best.updated_at or ""))) then
+    if rapp ~= "" and (best == nil or ur < ub or (ur == ub and instant(r.updated_at) > instant(best.updated_at))) then
       best = r
       if app == "" then app = rapp end
     end

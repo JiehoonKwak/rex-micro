@@ -56,19 +56,23 @@ static void ov_setup(void) {
 	ov.web = w;
 }
 
-// ov_show loads page and shows it centered on the screen under the mouse.
+// ov_show loads page and shows it centered on the screen under the mouse. A
+// page that replaces one already up (a new layer, an agent's new message)
+// keeps the overlay where it is.
 static void ov_show(char *page, int width, int height) {
 	NSString *s = [NSString stringWithUTF8String:page];
 	free(page);
 	dispatch_async(dispatch_get_main_queue(), ^{
-		NSPoint m = [NSEvent mouseLocation];
-		NSScreen *screen = NSScreen.mainScreen;
-		for (NSScreen *sc in NSScreen.screens) {
-			if (NSMouseInRect(m, sc.frame, NO)) screen = sc;
+		if (ov.want == 0) {
+			NSPoint m = [NSEvent mouseLocation];
+			NSScreen *screen = NSScreen.mainScreen;
+			for (NSScreen *sc in NSScreen.screens) {
+				if (NSMouseInRect(m, sc.frame, NO)) screen = sc;
+			}
+			NSRect f = screen.visibleFrame;
+			NSRect r = NSMakeRect(NSMidX(f) - width / 2.0, NSMidY(f) - height / 2.0, width, height);
+			[ov.panel setFrame:r display:NO];
 		}
-		NSRect f = screen.visibleFrame;
-		NSRect r = NSMakeRect(NSMidX(f) - width / 2.0, NSMidY(f) - height / 2.0, width, height);
-		[ov.panel setFrame:r display:NO];
 		ov.want = ++gen;
 		ov.loading = gen;
 		[ov.web loadHTMLString:s baseURL:nil];

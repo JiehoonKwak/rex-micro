@@ -128,6 +128,28 @@ func (l *CLI) follow(boot string) string {
 	return exe
 }
 
+// handOver looks for the server's own rex while a stream runs on the stand-in
+// path, and calls switchTo once one is known that differs from it.
+func (l *CLI) handOver(ctx context.Context, path string, switchTo func()) {
+	every := l.Retry
+	if every == 0 {
+		every = 5 * time.Second
+	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		if p := l.Path(); l.Known() != "" && p != path {
+			switchTo()
+			return
+		}
+	}
+}
+
 // Forget drops the followed server, so the next Path follows anew: call it
 // when the server went away, since the next one may be a newer Rex.
 func (l *CLI) Forget() {
