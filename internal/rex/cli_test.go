@@ -197,3 +197,16 @@ func TestLocalWatcherHandsOverToTheServersRex(t *testing.T) {
 		t.Fatalf("handed over but forgot the server: %q", l.Known())
 	}
 }
+
+// Now never asks the server, so a shell binding pressed while Rex is down
+// starts at once with the bootstrap rex.
+func TestCLINowDoesNotAsk(t *testing.T) {
+	asked := false
+	l := &CLI{Bootstrap: func() string { return "/no/such/rex" }, Exe: func(int) (string, error) { asked = true; return "", nil }}
+	if got := l.Now(); got != "/no/such/rex" || asked || !l.tried.IsZero() {
+		t.Fatalf("Now() = %q, asked %v, tried %v", got, asked, l.tried)
+	}
+	if got := (&CLI{}).Now(); got != "rex" {
+		t.Fatal(got)
+	}
+}

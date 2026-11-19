@@ -85,6 +85,12 @@ type keyState struct {
 	tapAt        time.Time // first tap of a possible double, zero when none pending
 	binding      *config.KeyBinding
 	app, program string // context when the gesture began; its actions target it
+	layer        string // the active layer's name then
+	// target is a copy of the selected agent pane then (agentPane), which
+	// key and text bindings with an agent target and shell bindings act on,
+	// so a refresh or another selection during a double-press or hold wait
+	// cannot redirect them. Nil when there was no agent.
+	target *rex.Pane
 	// agent is the block an Agent Key stood for when the gesture began, so a
 	// refresh that reorders the keys during the double-press wait cannot send
 	// the press to another pane. Only the ID is kept: where the pane is (its
@@ -264,7 +270,8 @@ func (e *Engine) keyDown(name string, now time.Time) {
 	b := e.binding(name)
 	if s.tapAt.IsZero() {
 		// A double completes with the binding and context it started with.
-		s.binding, s.app, s.program, s.agent = b, e.app, e.program, ""
+		s.binding, s.agent = b, ""
+		e.begin(s)
 		if i, ok := agentIndex(name); ok && e.slots[i].Pane != nil {
 			s.agent = e.slots[i].Pane.Block
 		}
@@ -443,7 +450,9 @@ func agentDefault(v string) *config.Action {
 
 // fireNow fires the press of a control with no held state (dial, stick).
 func (e *Engine) fireNow(name string, b *config.KeyBinding) {
-	e.fire(name, "press", &keyState{binding: b, app: e.app, program: e.program})
+	s := &keyState{binding: b}
+	e.begin(s)
+	e.fire(name, "press", s)
 }
 
 // gestureAction is what a gesture does. A held shortcut is its key's down and
@@ -456,6 +465,16 @@ func gestureAction(b *config.KeyBinding, gesture string) *config.Action {
 		return nil
 	}
 	return b.Gesture(gesture)
+}
+
+// begin records the context a gesture starts in: the app and program in
+// front, the active layer, and the selected agent pane.
+func (e *Engine) begin(s *keyState) {
+	s.app, s.program, s.layer, s.target = e.app, e.program, e.cfg.Layers[e.layer].Name, nil
+	if p := e.agentPane(); p != nil {
+		cp := *p
+		s.target = &cp
+	}
 }
 
 func (e *Engine) fire(name, gesture string, s *keyState) {
@@ -481,7 +500,7 @@ func (e *Engine) do(name string, a *config.Action) {
 	case "key":
 		block, keys := "", []string(a.Key) // "" = the pane focused in the Rex app
 		if a.Target == "agent" {
-			p := e.agentPane()
+			p := e.cur.target
 			if p == nil {
 				e.logf("%s: no agent pane to send %v to; skipped", name, keys)
 				return
@@ -490,7 +509,7 @@ func (e *Engine) do(name string, a *config.Action) {
 		}
 		e.effect(name, func() error { return e.exec.SendKeys(block, keys) })
 	case "text":
-		p := e.agentPane() // text always goes to the selected agent pane
+		p := e.cur.target // text always goes to the selected agent pane
 		if p == nil {
 			e.logf("%s: no agent pane to type into; skipped", name)
 			return
@@ -514,7 +533,7 @@ func (e *Engine) do(name string, a *config.Action) {
 		e.effect(name, func() error { return e.exec.CLI(args) })
 	case "shell":
 		cmd, detach := a.Shell, a.Detach
-		env := ShellEnv(name, e.gesture, e.cfg.Layers[e.layer].Name, e.agentPane()) // as pressed
+		env := ShellEnv(name, e.gesture, e.cur.layer, e.cur.target) // as the gesture began
 		e.effect(name, func() error { return e.exec.Shell(cmd, detach, env) })
 	}
 }
@@ -577,8 +596,8 @@ func (e *Engine) pane(block string) *rex.Pane {
 // ShellEnv is what a shell binding learns about its press: the key, gesture
 // and active layer, and the selected agent pane (the one key and text
 // bindings with an agent target use). With no agent the REX_MICRO_AGENT_*
-// names are left out, not set empty. The daemon adds REX_MICRO_REX and
-// REX_MICRO_APP. default.toml lists these names; keep the two in step.
+// names are left out, not set empty. The daemon adds REX_MICRO_REX.
+// docs/recipes.md lists these names; keep the two in step.
 func ShellEnv(key, gesture, layer string, agent *rex.Pane) []string {
 	env := []string{"REX_MICRO_KEY=" + key, "REX_MICRO_GESTURE=" + gesture, "REX_MICRO_LAYER=" + layer}
 	if agent == nil {

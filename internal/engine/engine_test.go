@@ -636,3 +636,34 @@ func TestShellEnvWithoutAnAgent(t *testing.T) {
 		t.Fatalf("env = %s", got)
 	}
 }
+
+// A hold fires after the key has been down a while, and a double-press tap
+// after the double window; an agent selected or a layer switched meanwhile
+// must not change what the gesture acts on.
+func TestShellEnvIsTheGesturesStart(t *testing.T) {
+	e, r := setup(t, "[[layer]]\nname = \"base\"\n[layer.keys]\nACT09 = { hold = { shell = \"held\" } }\nACT08 = { press = { shell = \"tapped\" }, double = { builtin = \"none\" } }\n[[layer]]\nname = \"other\"\n[layer.keys]\nACT09 = { hold = { shell = \"held\" } }\n")
+	panes := []rex.Pane{{Block: "b1", App: "codex", State: "blocked"}, {Block: "b2", App: "claude-code", State: "working"}}
+	var a agents.Assigner
+	e.SetPanes(panes, a.Assign(panes, e.cfg.Agents))
+	check := func(call, layer string) {
+		t.Helper()
+		want(t, r, call)
+		got := strings.Join(r.env, " ")
+		if !strings.Contains(got, "REX_MICRO_AGENT_BLOCK=b1") || !strings.Contains(got, "REX_MICRO_LAYER="+layer) {
+			t.Fatalf("env = %s", got)
+		}
+		r.calls = nil
+	}
+
+	press(e, "ACT08", t0)
+	e.selected = "b2"
+	e.Advance(t0.Add(time.Second))
+	check("shell tapped", "base")
+
+	e.selected = ""
+	e.Input(protocol.Input{Kind: protocol.InputKey, Key: "ACT09", Down: true}, t0.Add(2*time.Second))
+	e.selected = "b2"
+	e.SelectLayer(1)
+	e.Advance(t0.Add(4 * time.Second))
+	check("shell held", "base")
+}

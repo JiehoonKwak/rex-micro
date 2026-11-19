@@ -550,6 +550,7 @@ func TestShellPassesItsEnvironment(t *testing.T) {
 	t.Setenv("REX_MICRO_TEST_INHERITED", "yes")
 	t.Setenv("REX_SESSION", "session:the-pane-rex-micro-ran-in")
 	t.Setenv("REX_BLOCK", "block:the-pane-rex-micro-ran-in")
+	t.Setenv("REX_MICRO_AGENT_BLOCK", "block:the-pane-rex-micro-ran-in")
 	err := executor{}.Shell("env > '"+out+"'", false, []string{"REX_MICRO_AGENT_MSG=it's \"quoted\" $HOME"})
 	if err != nil {
 		t.Fatal(err)

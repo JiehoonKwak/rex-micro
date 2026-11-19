@@ -690,11 +690,11 @@ func (c *Client) CLI(args ...string) error {
 	return err
 }
 
-// CLIPath is the rex executable this client runs, "" when its runner is not
-// the real CLI (tests).
+// CLIPath is the rex executable this client runs, found without waiting for
+// the server (CLI.Now); "" when its runner is not the real CLI (tests).
 func (c *Client) CLIPath() string {
 	if r, ok := c.Runner.(ExecRunner); ok && r.CLI != nil {
-		return r.CLI.Path()
+		return r.CLI.Now()
 	}
 	return ""
 }

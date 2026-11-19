@@ -81,6 +81,21 @@ func (l *CLI) Path() string {
 	return boot
 }
 
+// Now returns the rex to run without waiting for the server: the known one,
+// else the bootstrap one, else "rex". A shell binding gets it, so a press
+// while Rex is down is not held up by Path asking the server.
+func (l *CLI) Now() string {
+	if exe := l.Known(); exe != "" {
+		return exe
+	}
+	if l.Bootstrap != nil {
+		if boot := l.Bootstrap(); boot != "" {
+			return boot
+		}
+	}
+	return "rex"
+}
+
 // Known returns the rex Path would run without asking anything: the fixed
 // one or the followed server's, "" when neither is known yet (or the
 // followed one was removed by an update).
