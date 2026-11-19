@@ -130,6 +130,11 @@ type Pane struct {
 	App          string    `json:"app"`   // e.g. claude-code, codex; "" when no agent
 	State        string    `json:"state"` // working, blocked, done, error, idle
 	Since        time.Time `json:"since"`
+	// Msg is the agent's one-line status message, as Rex's Activity shows it.
+	Msg string `json:"msg,omitempty"`
+	// Kind is what a blocked agent waits for: permission, question or auth
+	// ("" when it did not say).
+	Kind string `json:"kind,omitempty"`
 	Focused      bool      `json:"focused"` // focused block of its session's active window
 	// Program is the foreground program of a focused terminal, e.g. zsh,
 	// lazygit, claude. Only focused panes report it.

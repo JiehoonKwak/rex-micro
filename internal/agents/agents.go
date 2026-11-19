@@ -216,6 +216,11 @@ func Lights(slots [Keys]Slot, cfg config.LightingConfig) [Keys]protocol.Light {
 		if !ok {
 			look = cfg.States["idle"]
 		}
+		if s.State == "blocked" && s.Pane != nil && s.Pane.Kind != "" {
+			if k, ok := cfg.States["blocked_"+s.Pane.Kind]; ok {
+				look = k
+			}
+		}
 		l, err := look.Resolve(cfg.Brightness)
 		if err == nil {
 			out[i] = l

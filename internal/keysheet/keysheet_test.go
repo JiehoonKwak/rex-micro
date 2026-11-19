@@ -32,7 +32,7 @@ ENC_CLK = { press = { shortcut = "cmd+shift+a", label = "Tab search" }, hold = {
 		t.Fatal(err)
 	}
 	e := engine.New(cfg, nil, nil, nil)
-	pane := rex.Pane{Block: "b1", Session: "s1", SessionLabel: "ops", App: "claude-code"}
+	pane := rex.Pane{Block: "b1", Session: "s1", SessionLabel: "ops", App: "claude-code", Msg: "Allow Bash: go test?"}
 	var slots [agents.Keys]agents.Slot
 	slots[0].Pane = &pane
 	e.SetPanes([]rex.Pane{pane}, slots)
@@ -52,7 +52,7 @@ ENC_CLK = { press = { shortcut = "cmd+shift+a", label = "Tab search" }, hold = {
 	check("ACT06", Key{Main: "Focus <mode>", Hint: "⌘⇧Z", Own: true})
 	check("ACT07", Key{Main: "⌘P"}) // from the base layer
 	check("ENC_CLK", Key{Main: "Tab search", Hint: "⌘⇧A", More: []string{"hold: show these keys"}, Own: true})
-	check("AG00", Key{Main: "ops", More: []string{"claude-code"}})
+	check("AG00", Key{Main: "ops", More: []string{"claude-code", "Allow Bash: go test?"}})
 	check("AG01", Key{Main: "no agent"})
 
 	page := HTML(s)

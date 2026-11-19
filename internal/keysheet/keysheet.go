@@ -53,6 +53,9 @@ func Build(e *engine.Engine, cfg *config.Config) Sheet {
 				if p.App != "" {
 					k.More = []string{p.App}
 				}
+				if p.Msg != "" {
+					k.More = append(k.More, p.Msg) // as Rex's Activity shows it
+				}
 			}
 			s.Keys[name] = k
 			continue

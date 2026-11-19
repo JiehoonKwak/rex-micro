@@ -48,6 +48,9 @@ local function agent_state(pane, records)
   end
   if best then
     pane.app, pane.state = app, best.state or "idle"
+    -- The program's own one-line message, and what a blocked one waits for
+    -- (permission, question or auth); both as reported, possibly absent.
+    pane.msg, pane.kind = best.msg, best.kind
     if best.updated_at and best.updated_at ~= "" then pane.since = best.updated_at end
   end
 end

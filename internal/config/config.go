@@ -289,6 +289,19 @@ var KeyNames = []string{
 
 var States = []string{"working", "blocked", "error", "done", "idle", "empty"}
 
+// BlockedKinds are what a blocked agent can say it waits for. A state
+// "blocked_<kind>" in [lighting.states] overrides blocked for that kind.
+var BlockedKinds = []string{"permission", "question", "auth"}
+
+// knownState reports whether name is a state or a blocked_<kind> state.
+func knownState(name string) bool {
+	if contains(States, name) {
+		return true
+	}
+	kind, ok := strings.CutPrefix(name, "blocked_")
+	return ok && contains(BlockedKinds, kind)
+}
+
 // Path returns the config file location.
 func Path() string {
 	if p := os.Getenv("REX_MICRO_CONFIG"); p != "" {
@@ -387,8 +400,8 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("lighting.backlight: %q is not layer or off", c.Lighting.Backlight)
 	}
 	for name, l := range c.Lighting.States {
-		if !contains(States, name) {
-			return fmt.Errorf("lighting.states.%s: unknown state (use %s)", name, strings.Join(States, ", "))
+		if !knownState(name) {
+			return fmt.Errorf("lighting.states.%s: unknown state (use %s, or blocked_%s)", name, strings.Join(States, ", "), strings.Join(BlockedKinds, "|"))
 		}
 		if _, err := l.Resolve(1); err != nil {
 			return fmt.Errorf("lighting.states.%s: %w", name, err)

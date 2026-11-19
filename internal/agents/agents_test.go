@@ -156,3 +156,27 @@ func TestStateLights(t *testing.T) {
 		t.Errorf("blocked entry missing from %s", msg)
 	}
 }
+
+// A blocked agent that says what it waits for takes that kind's look when the
+// config sets one, and plain blocked otherwise.
+func TestBlockedKindLights(t *testing.T) {
+	c := cfg(t, "[lighting.states]\nblocked_permission = { color = \"#F97316\" }\n")
+	perm, question, unsaid := agent("a", "blocked", 1), agent("b", "blocked", 1), agent("c", "blocked", 1)
+	perm.Kind, question.Kind = "permission", "question"
+	var slots [Keys]Slot
+	for i, p := range []*rex.Pane{&perm, &question, &unsaid} {
+		slots[i] = Slot{Pane: p, State: "blocked"}
+	}
+	got := Lights(slots, c.Lighting)
+	if got[0].Color != 0xF97316 {
+		t.Errorf("permission: %+v, want blocked_permission's color", got[0])
+	}
+	for i := 1; i < 3; i++ {
+		if got[i].Color != 0xF59E0B {
+			t.Errorf("slot %d: %+v, want plain blocked", i, got[i])
+		}
+	}
+	if _, err := config.Parse("[lighting.states]\nblocked_coffee = { color = \"#000000\" }\n"); err == nil {
+		t.Error("an unknown blocked kind was accepted")
+	}
+}
