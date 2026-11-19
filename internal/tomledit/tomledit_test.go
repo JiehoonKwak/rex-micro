@@ -48,7 +48,7 @@ func TestReplaceOneKeyLeavesEveryOtherByte(t *testing.T) {
 		t.Fatalf("changed lines = %q", got)
 	}
 	got = got[:1]
-	want := `ACT06 = { action = "pane.split.right" }   # FAST cap: zoom the focused pane`
+	want := `ACT06 = { action = "pane.split.right" }                       # FAST cap`
 	if len(got) != 1 || got[0] != want {
 		t.Fatalf("changed lines = %q, want [%q]", got, want)
 	}
@@ -75,7 +75,7 @@ func TestAddRemoveKeyAndFields(t *testing.T) {
 		t.Fatalf("layer = %+v", l)
 	}
 	// The added binding joins the keys table, before the commented example.
-	if !strings.Contains(d.String(), "STICK_RIGHT = { action = \"pane.focus.right\" }\nAG00 = { shortcut = \"cmd+t\" }\n\n# Example second layer") {
+	if !strings.Contains(d.String(), "STICK_RIGHT = { action = \"pane.focus.right\", label = \"Pane right\" }\nAG00 = { shortcut = \"cmd+t\" }\n\n# Example layers") {
 		t.Fatalf("placement:\n%s", d.String())
 	}
 }

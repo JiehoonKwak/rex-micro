@@ -34,8 +34,10 @@ CODEX on `ACT12`.
 
 `rex-micro config default` prints the default config: every option, binding
 type, gesture, layer `match` and Agent Key mode, with examples. Read it before
-writing a binding you have not used. `rex-micro actions` lists the Rex actions;
-actions without a dot are the user's own `rex.action` definitions in
+writing a binding you have not used. `rex-micro actions` lists the Rex actions,
+Settings included (`client.setting.*`); bind the action rather than a shortcut
+the user gave it in Rex, which works only on that Mac. Actions without a dot
+are the user's own `rex.action` definitions in
 `~/.config/rex/init.lua`, where a complex behaviour belongs, bound with
 `{ action = "name" }`. For a layer `match`, `rex-micro status --json` shows the
 exact `front_app` and `program` names.

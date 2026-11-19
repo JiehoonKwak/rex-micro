@@ -168,7 +168,7 @@ func TestLayerWithMatchAndAgentKey(t *testing.T) {
 	if cfg.Layers[0].Keys["AG00"] != nil {
 		t.Fatal("base layer changed")
 	}
-	if !strings.HasPrefix(*saved, config.Default[:strings.Index(config.Default, "# Example second layer")]) {
+	if !strings.HasPrefix(*saved, config.Default[:strings.Index(config.Default, "# Example layers")]) {
 		t.Fatal("the existing text before the new layer changed")
 	}
 }

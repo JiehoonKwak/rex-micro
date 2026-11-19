@@ -93,7 +93,7 @@ gh release verify-asset vX.Y.Z rex-micro_X.Y.Z_darwin_universal.tar.gz -R Jiehoo
 | CODEX | Send Enter |
 | MIC | Unbound by default; bind your dictation tool here |
 | Stick | Move focus up, down, left or right |
-| Dial | Turn to scroll (Page Up / Page Down); press to switch layers; hold to show the keys |
+| Dial | Turn to scroll (Page Up / Page Down); press to open Rex's Activity; hold to show the keys |
 
 Agent Key colors:
 
@@ -105,6 +105,10 @@ Agent Key colors:
 | Green | done |
 | Dim white | idle |
 | Off | no agent assigned |
+
+A blocked agent may say what it waits for (permission, question or auth);
+`blocked_permission = { ... }` and the like under `[lighting.states]` give
+that kind its own look.
 
 ## Configuration
 
@@ -121,8 +125,10 @@ list of Rex actions, key presses, shortcuts, text and commands. The layer menu
 by itself. The editor changes only the lines it must, so your comments stay.
 
 The daemon reloads the file when you save it. The
-[default config](internal/config/default.toml) documents every setting. Here
-is a second layer for tools and a push-to-talk MIC key:
+[default config](internal/config/default.toml) documents every setting and
+ends with example layers to uncomment: sessions and tabs, a browser layer,
+and Copy Mode on the stick and dial. Here is a second layer for tools and a
+push-to-talk MIC key:
 
 ```toml
 [[layer]]
@@ -180,6 +186,9 @@ there and in the editor:
 ```toml
 ACT06 = { shortcut = "cmd+shift+z", label = "Focus mode" }
 ```
+
+An Agent Key shows its agent's session, app and latest status message, the
+line Rex's Activity shows for it.
 
 ### Layers on the pad
 

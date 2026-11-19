@@ -1,6 +1,7 @@
 package config
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -38,25 +39,42 @@ func TestOverrideOneState(t *testing.T) {
 	}
 }
 
-func TestUncommentedExampleLayerParses(t *testing.T) {
+// Every example layer in the default config parses once uncommented, and so
+// does every commented binding line elsewhere in it (the MIC dictation and
+// blocked_permission examples).
+func TestUncommentedExamplesParse(t *testing.T) {
+	toml := regexp.MustCompile(`^# (\[|[A-Za-z0-9_]+ *=|# )`)
 	var b strings.Builder
 	in := false
 	for _, line := range strings.Split(Default, "\n") {
-		if strings.HasPrefix(line, "# Example second layer") {
+		if strings.HasPrefix(line, "# Example layers") {
 			in = true
-			continue
 		}
-		if in && strings.HasPrefix(line, "# ") && !strings.HasPrefix(line, "#  ") {
+		switch {
+		case in && toml.MatchString(line):
 			line = strings.TrimPrefix(line, "# ")
+		case strings.HasPrefix(line, "#   MIC = { shortcut"), strings.HasPrefix(line, "# blocked_permission = "):
+			line = strings.TrimLeft(line, "# ")
 		}
 		b.WriteString(line + "\n")
 	}
-	cfg, err := Parse(b.String())
+	text := strings.Replace(b.String(), "MIC   = { builtin = \"none\" }\n", "", 1)
+	cfg, err := Parse(text)
 	if err != nil {
-		t.Fatalf("example layer: %v", err)
+		t.Fatalf("examples: %v\n%s", err, text)
 	}
-	if len(cfg.Layers) != 2 {
-		t.Fatalf("want 2 layers, got %d", len(cfg.Layers))
+	var names []string
+	for _, l := range cfg.Layers {
+		names = append(names, l.Name)
+	}
+	if got := strings.Join(names, " "); got != "agents layout browser copy" {
+		t.Fatalf("layers = %s", got)
+	}
+	if cfg.Layers[0].Keys["MIC"].Action.Shortcut != "right_option" || cfg.Lighting.States["blocked_permission"].Color == "" {
+		t.Fatal("the MIC or blocked_permission example was not uncommented")
+	}
+	if a := cfg.Layers[3].Keys["STICK_UP"].Action; a.Action != "pane.copy_mode.move" || a.Args["to"] != "up" {
+		t.Fatalf("copy layer STICK_UP = %+v", a)
 	}
 }
 

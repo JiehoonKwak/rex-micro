@@ -42,6 +42,9 @@ error   = { color = "#EF4444", effect = "breath", speed = 0.8 }
 done    = { color = "#22C55E" }
 idle    = { color = "#FFFFFF", brightness = 0.5 }
 empty   = { effect = "off" }
+# A blocked agent may say what it waits for: permission, question or auth.
+# blocked_<kind> gives that kind its own look; unset kinds look like blocked.
+# blocked_permission = { color = "#F97316", effect = "breath", speed = 0.8 }
 
 [stick]
 threshold = 0.6        # how far to push before a direction fires (0-1)
@@ -110,21 +113,29 @@ name = "agents"
 color = "#8B5CF6"
 
 [layer.keys]
-ACT06 = { action = "pane.zoom" }          # FAST cap: zoom the focused pane
-ACT07 = { key = "enter" }                 # APPROVE cap
-ACT08 = { key = "escape" }                # REJECT cap
-ACT09 = { action = "pane.split.auto" }    # SPLIT cap
-MIC   = { builtin = "none" }              # bind your dictation tool here
-ACT12 = { key = "enter" }                 # CODEX cap: send
-ENC_CLK = { press = { builtin = "layer.next" }, hold = { builtin = "keys.show" } }  # hold: show these keys
-ENC_CW  = { key = "page_down" }
-ENC_CC  = { key = "page_up" }
-STICK_UP    = { action = "pane.focus.up" }
-STICK_DOWN  = { action = "pane.focus.down" }
-STICK_LEFT  = { action = "pane.focus.left" }
-STICK_RIGHT = { action = "pane.focus.right" }
+ACT06 = { action = "pane.zoom", label = "Zoom pane" }         # FAST cap
+ACT07 = { key = "enter", label = "Approve" }                  # APPROVE cap
+ACT08 = { key = "escape", label = "Reject" }                  # REJECT cap
+ACT09 = { action = "pane.split.auto", label = "Split pane" }  # SPLIT cap
+# MIC: bind your dictation app. One on a modifier hotkey, held as long as MIC
+# is, tells a tap (toggle) from a hold (push-to-talk) itself:
+#   MIC = { shortcut = "right_option", held = true, label = "Dictation" }
+MIC   = { builtin = "none" }
+ACT12 = { key = "enter", label = "Send" }                     # CODEX cap
+# Dial press: Rex's Activity list. With more layers and [pad] layers = "off",
+# press = { builtin = "layer.next" } switches layers here instead.
+ENC_CLK = { press = { action = "client.sidebar.activity.toggle", label = "Activity" }, hold = { builtin = "keys.show" } }  # hold: show these keys
+ENC_CW  = { key = "page_down", label = "Page down" }
+ENC_CC  = { key = "page_up", label = "Page up" }
+STICK_UP    = { action = "pane.focus.up", label = "Pane up" }
+STICK_DOWN  = { action = "pane.focus.down", label = "Pane down" }
+STICK_LEFT  = { action = "pane.focus.left", label = "Pane left" }
+STICK_RIGHT = { action = "pane.focus.right", label = "Pane right" }
 
-# Example second layer: uncomment to try it.
+# Example layers: uncomment one to try it.
+#
+# A hand-picked layer for sessions, splits and tabs. The pad's touch sensor
+# turns it on, or the dial press once bound to layer.next (see above).
 #
 # [[layer]]
 # name = "layout"
@@ -133,9 +144,49 @@ STICK_RIGHT = { action = "pane.focus.right" }
 # [layer.keys]
 # AG00 = { builtin = "session.1" }
 # AG01 = { builtin = "session.2" }
-# ACT06 = { action = "pane.split.right" }
-# ACT07 = { action = "pane.split.down" }
-# ACT08 = { action = "pane.close" }
-# ACT09 = { action = "client.tab.new" }
-# ENC_CW = { action = "client.tab.next" }
-# ENC_CC = { action = "client.tab.previous" }
+# ACT06 = { action = "pane.split.right", label = "Split right" }
+# ACT07 = { action = "pane.split.down", label = "Split down" }
+# ACT08 = { action = "pane.close", label = "Close pane" }
+# ACT09 = { action = "client.tab.new", label = "New tab" }
+# ENC_CW = { action = "client.tab.next", label = "Next tab" }
+# ENC_CC = { action = "client.tab.previous", label = "Previous tab" }
+# # Most Rex settings are actions too: numbers take increase, decrease, value
+# # or reset; switches toggle when given nothing.
+# ACT12 = { action = "client.setting.notifications.activity.sounds", label = "Activity sounds" }
+#
+# A browser layer, on while the browser is in front. Shortcuts go to the
+# browser, so its own and its extensions' shortcuts work; keys left out fall
+# through to the first layer.
+#
+# [[layer]]
+# name = "browser"
+# color = "#22C55E"
+# match = { app = "Google Chrome" }
+#
+# [layer.keys]
+# ACT09 = { shortcut = "cmd+w", label = "Close tab" }
+# ENC_CW = { shortcut = "page_down", label = "Page down" }  # a shortcut: key would go to the Rex pane
+# ENC_CC = { shortcut = "page_up", label = "Page up" }
+# STICK_UP    = { shortcut = "up", label = "Scroll up" }
+# STICK_DOWN  = { shortcut = "down", label = "Scroll down" }
+# STICK_LEFT  = { shortcut = "cmd+shift+[", label = "Previous tab" }
+# STICK_RIGHT = { shortcut = "cmd+shift+]", label = "Next tab" }
+#
+# Copy Mode: keyboard selection over a pane's scrollback. FAST enters it, the
+# stick moves, the dial pages, APPROVE copies the selection, REJECT leaves.
+#
+# [[layer]]
+# name = "copy"
+# color = "#F59E0B"
+#
+# [layer.keys]
+# ACT06 = { action = "pane.copy_mode.enter", label = "Copy mode" }
+# ACT07 = { action = "pane.copy_mode.yank", label = "Copy" }
+# ACT08 = { action = "pane.copy_mode.exit", label = "Leave" }
+# ACT09 = { action = "pane.copy_mode.select", args = { mode = "line" }, label = "Select lines" }
+# ENC_CW = { action = "pane.copy_mode.move", args = { to = "half_page_down" }, label = "Half page down" }
+# ENC_CC = { action = "pane.copy_mode.move", args = { to = "half_page_up" }, label = "Half page up" }
+# STICK_UP    = { action = "pane.copy_mode.move", args = { to = "up" }, label = "Up" }
+# STICK_DOWN  = { action = "pane.copy_mode.move", args = { to = "down" }, label = "Down" }
+# STICK_LEFT  = { action = "pane.copy_mode.move", args = { to = "word_backward" }, label = "Word back" }
+# STICK_RIGHT = { action = "pane.copy_mode.move", args = { to = "word_forward" }, label = "Word forward" }

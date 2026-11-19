@@ -182,7 +182,7 @@ func TestHoldSuppressesPress(t *testing.T) {
 }
 
 func TestLayersFallThroughAndCycle(t *testing.T) {
-	cfg := config.Default + "\n[[layer]]\nname = \"tools\"\ncolor = \"#00FFFF\"\n[layer.keys]\nACT07 = { rex = [\"run\", \"--\", \"lazygit\"] }\n"
+	cfg := "[[layer]]\nname = \"agents\"\n[layer.keys]\nACT08 = { key = \"escape\" }\nENC_CLK = { builtin = \"layer.next\" }\n" + "\n[[layer]]\nname = \"tools\"\ncolor = \"#00FFFF\"\n[layer.keys]\nACT07 = { rex = [\"run\", \"--\", \"lazygit\"] }\n"
 	e, r := setup(t, cfg)
 	var changed []int
 	e.OnLayer = func(i int) { changed = append(changed, i) }
