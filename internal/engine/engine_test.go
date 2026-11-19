@@ -667,3 +667,21 @@ func TestShellEnvIsTheGesturesStart(t *testing.T) {
 	e.Advance(t0.Add(4 * time.Second))
 	check("shell held", "base")
 }
+
+// A down that shows an agent (agent.attention) makes the press of the same
+// gesture act on that agent, for key, text and shell bindings alike.
+func TestPressFollowsTheAgentItsDownShowed(t *testing.T) {
+	for _, press := range []string{`{ key = "enter", target = "agent" }`, `{ text = "go" }`, `{ shell = "s" }`} {
+		e, r := setup(t, "[[layer]]\nname = \"base\"\n[layer.keys]\nACT09 = { down = { builtin = \"agent.attention\" }, press = "+press+" }\n")
+		panes := []rex.Pane{{Block: "b1", App: "codex", State: "working"}, {Block: "b2", App: "claude-code", State: "blocked"}}
+		var a agents.Assigner
+		e.SetPanes(panes, a.Assign(panes, e.cfg.Agents))
+		e.selected = "b1"
+		e.Input(protocol.Input{Kind: protocol.InputKey, Key: "ACT09", Down: true}, t0)
+		e.Input(protocol.Input{Kind: protocol.InputKey, Key: "ACT09", Down: false}, t0.Add(30*time.Millisecond))
+		got := strings.Join(r.calls, ",") + " " + strings.Join(r.env, " ")
+		if strings.Contains(got, "b1") || !strings.Contains(got, "b2") {
+			t.Errorf("%s: %s", press, got)
+		}
+	}
+}

@@ -36,8 +36,8 @@ ACT09 = { shell = '"$REX_MICRO_REX" ${REX_MICRO_AGENT_HOST:+-S "$REX_MICRO_AGENT
 ```
 
 When the pane listens on several ports, `rex forward open` lists them and
-opens none. `rex [-S HOST] forward ls` shows the forwards, and
-`rex [-S HOST] forward close ID` stops one.
+opens none. `rex [-S HOST] forward ls -s SESSION` shows the forwards of the
+agent's session, and `rex [-S HOST] forward close -s SESSION ID` stops one.
 
 ## Copy the agent's screen
 
@@ -48,7 +48,7 @@ into another agent or a chat:
 ACT08 = { shell = 'out=$("$REX_MICRO_REX" ${REX_MICRO_AGENT_HOST:+-S "$REX_MICRO_AGENT_HOST"} capture -s "${REX_MICRO_AGENT_SESSION:?no agent}" -b "$REX_MICRO_AGENT_BLOCK" --trim --unwrap) && printf %s "$out" | pbcopy', label = "Copy agent screen" }
 ```
 
-## Approve only a permission prompt
+## Enter, only while the agent waits for a permission
 
 The default APPROVE key sends Enter to the focused pane, whatever it is
 doing. This one sends Enter to the selected agent, and only if that agent was
@@ -58,7 +58,7 @@ is still a plain Enter: press it twice quickly and the second Enter can land
 on whatever the agent asks next.
 
 ```toml
-ACT07 = { shell = '[ "$REX_MICRO_AGENT_KIND" = permission ] && exec "$REX_MICRO_REX" ${REX_MICRO_AGENT_HOST:+-S "$REX_MICRO_AGENT_HOST"} send-key -s "$REX_MICRO_AGENT_SESSION" -b "$REX_MICRO_AGENT_BLOCK" enter; exit 0', label = "Approve permission" }
+ACT07 = { shell = '[ "$REX_MICRO_AGENT_KIND" = permission ] && exec "$REX_MICRO_REX" ${REX_MICRO_AGENT_HOST:+-S "$REX_MICRO_AGENT_HOST"} send-key -s "$REX_MICRO_AGENT_SESSION" -b "$REX_MICRO_AGENT_BLOCK" enter; exit 0', label = "Enter if permission" }
 ```
 
 ## Rex palette prompts

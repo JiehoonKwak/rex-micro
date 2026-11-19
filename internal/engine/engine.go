@@ -89,7 +89,8 @@ type keyState struct {
 	// target is a copy of the selected agent pane then (agentPane), which
 	// key and text bindings with an agent target and shell bindings act on,
 	// so a refresh or another selection during a double-press or hold wait
-	// cannot redirect them. Nil when there was no agent.
+	// cannot redirect them; an agent this gesture itself shows replaces it
+	// (show). Nil when there was no agent.
 	target *rex.Pane
 	// agent is the block an Agent Key stood for when the gesture began, so a
 	// refresh that reorders the keys during the double-press wait cannot send
@@ -683,6 +684,12 @@ func (e *Engine) builtin(name, b string) {
 func (e *Engine) show(name string, p rex.Pane, zoom bool) {
 	if p.Agent() {
 		e.selected = p.Block
+		if e.cur != nil {
+			// The rest of this gesture (a press after a down that showed it)
+			// acts on the agent just shown.
+			cp := p
+			e.cur.target = &cp
+		}
 	}
 	e.effect(name, func() error { return e.exec.Show(p, zoom) })
 }
