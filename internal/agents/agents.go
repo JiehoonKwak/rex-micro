@@ -205,6 +205,22 @@ func stateOf(p *rex.Pane) string {
 	return "empty"
 }
 
+// Look is the configured look of a key in state (blocked: what it waits
+// for, kind, may have its own), the same for the pad's lights and the keys
+// overlay.
+func Look(state, kind string, cfg config.LightingConfig) config.Light {
+	look, ok := cfg.States[state]
+	if !ok {
+		look = cfg.States["idle"]
+	}
+	if state == "blocked" && kind != "" {
+		if k, ok := cfg.States["blocked_"+kind]; ok {
+			look = k
+		}
+	}
+	return look
+}
+
 // Lights renders the slots with the configured looks.
 func Lights(slots [Keys]Slot, cfg config.LightingConfig) [Keys]protocol.Light {
 	var out [Keys]protocol.Light
@@ -212,16 +228,11 @@ func Lights(slots [Keys]Slot, cfg config.LightingConfig) [Keys]protocol.Light {
 		if s.State == "" {
 			s.State = "empty" // nothing known yet
 		}
-		look, ok := cfg.States[s.State]
-		if !ok {
-			look = cfg.States["idle"]
+		kind := ""
+		if s.Pane != nil {
+			kind = s.Pane.Kind
 		}
-		if s.State == "blocked" && s.Pane != nil && s.Pane.Kind != "" {
-			if k, ok := cfg.States["blocked_"+s.Pane.Kind]; ok {
-				look = k
-			}
-		}
-		l, err := look.Resolve(cfg.Brightness)
+		l, err := Look(s.State, kind, cfg).Resolve(cfg.Brightness)
 		if err == nil {
 			out[i] = l
 		}

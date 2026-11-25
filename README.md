@@ -192,8 +192,11 @@ there and in the editor:
 ACT06 = { shortcut = "cmd+shift+z", label = "Focus mode" }
 ```
 
-An Agent Key shows its agent's session, app and latest status message, the
-line Rex's Activity shows for it.
+An Agent Key shows its agent the way its light does: the state in the light's
+color (a blocked agent by what it waits for), the session, the host when it
+is not this Mac, and the status message Rex's Activity shows (else the app).
+On a layer above the first, the keys it leaves to the first layer fade, so its
+own bindings stand out.
 
 ### Layers on the pad
 

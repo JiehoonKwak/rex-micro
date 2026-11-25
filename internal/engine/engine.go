@@ -435,6 +435,15 @@ func (e *Engine) Binding(name string) (*config.KeyBinding, int) {
 	return e.binding(name), -1
 }
 
+// AgentSlot is what Agent Key i stands for: its pane (nil when none) and
+// the state its light shows.
+func (e *Engine) AgentSlot(i int) agents.Slot {
+	if i < 0 || i >= agents.Keys {
+		return agents.Slot{}
+	}
+	return e.slots[i]
+}
+
 // AgentPane is the pane Agent Key i stands for, nil when it has none.
 func (e *Engine) AgentPane(i int) *rex.Pane {
 	if i < 0 || i >= agents.Keys {
