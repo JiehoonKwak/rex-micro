@@ -51,7 +51,9 @@ threshold = 0.6        # how far to push before a direction fires (0-1)
 angle_offset = 0.0     # rotate directions if up comes out as right (-1 to 1 = a full turn)
 
 [timing]
-# A press waits double_press only when the key also has a double binding.
+# A press waits double_press only when the key also has a double binding,
+# except a show whose double is show_zoom: it shows at once, as the key goes
+# down, and a double adds the zoom.
 double_press = "300ms"
 hold = "500ms"
 

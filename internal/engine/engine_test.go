@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -122,16 +123,28 @@ func TestAgentKeysShowSlotAndDoubleZooms(t *testing.T) {
 	var a agents.Assigner
 	e.SetPanes(panes, a.Assign(panes, e.cfg.Agents))
 
-	press(e, "AG01", t0)
-	want(t, r) // waits: could be a double
-	e.Advance(t0.Add(400 * time.Millisecond))
+	// The show fires as the key goes down: a double only adds the zoom, so
+	// there is nothing to wait for.
+	e.Input(protocol.Input{Kind: protocol.InputKey, Key: "AG01", Down: true}, t0)
 	want(t, r, "show b2 zoom=false")
+	e.Input(protocol.Input{Kind: protocol.InputKey, Key: "AG01", Down: false}, t0.Add(30*time.Millisecond))
+	e.Advance(t0.Add(400 * time.Millisecond))
+	want(t, r) // shown once
 
 	press(e, "AG00", t0)
+	want(t, r, "show b1 zoom=false")
 	press(e, "AG00", t0.Add(150*time.Millisecond))
 	want(t, r, "show b1 zoom=true")
 	e.Advance(t0.Add(time.Second))
 	want(t, r) // the double consumed the first tap
+
+	// A double that does not just add to the press still waits for it.
+	e3, r3 := setup(t, "[[layer]]\nname = \"a\"\n[layer.keys]\nAG00 = { press = { builtin = \"agent.show\" }, double = { builtin = \"agent.attention\" } }\n")
+	e3.SetPanes(panes, a.Assign(panes, e3.cfg.Agents))
+	press(e3, "AG00", t0)
+	want(t, r3)
+	e3.Advance(t0.Add(400 * time.Millisecond))
+	want(t, r3, "show b1 zoom=false")
 
 	// target = "agent" now follows the last shown agent, b1.
 	e2, r2 := setup(t, "[[layer]]\nname = \"a\"\n[layer.keys]\nACT07 = { key = \"y\", target = \"agent\" }\n")
@@ -141,6 +154,112 @@ func TestAgentKeysShowSlotAndDoubleZooms(t *testing.T) {
 	e2.selected = "b1"
 	press(e2, "ACT07", t0)
 	want(t, r2, `keys "b1" y`)
+}
+
+// The early show must not cost the double: the show can turn on a layer (the
+// program it brings into view), and the second tap still zooms the pane the
+// first showed. Keys whose other gestures would act on the selected agent,
+// and keys other than Agent Keys, wait as before; a tap whose window passed
+// before its timer ran is no double.
+func TestEagerShowKeepsItsDouble(t *testing.T) {
+	panes := []rex.Pane{
+		{Block: "b1", App: "claude-code", State: "working", SessionIndex: 1},
+		{Block: "b2", App: "codex", State: "blocked", SessionIndex: 2},
+	}
+	e, r := setup(t, "[[layer]]\nname = \"base\"\n[[layer]]\nname = \"claude\"\nmatch = { program = \"claude\" }\n")
+	var a agents.Assigner
+	slots := a.Assign(panes, e.cfg.Agents)
+	e.SetPanes(panes, slots)
+	press(e, "AG00", t0)
+	want(t, r, "show b1 zoom=false")
+	e.SetContext("Rex", "claude") // the show brought claude into view
+	if e.Layer() != 1 {
+		t.Fatalf("layer %d, want the claude layer", e.Layer())
+	}
+	press(e, "AG00", t0.Add(150*time.Millisecond))
+	want(t, r, "show b1 zoom=true")
+	// The layer can change at any point of the gesture. A layer that still
+	// has the key show and zoom lets the double zoom; one that rebinds the
+	// key takes every later tap, while a press already down finishes with
+	// the binding it began with.
+	same := "[[layer]]\nname = \"base\"\n[[layer]]\nname = \"claude\"\nmatch = { program = \"claude\" }\n"
+	rebound := same + "[layer.keys]\nAG00 = { key = \"y\" }\n"
+	down := func(e *Engine, at time.Duration) {
+		e.Input(protocol.Input{Kind: protocol.InputKey, Key: "AG00", Down: true}, t0.Add(at))
+	}
+	up := func(e *Engine, at time.Duration) {
+		e.Input(protocol.Input{Kind: protocol.InputKey, Key: "AG00"}, t0.Add(at))
+	}
+	ms := time.Millisecond
+	for _, c := range []struct {
+		name, cfg string
+		steps     func(e *Engine, sw func())
+		want      []string
+	}{
+		{"same layer, switch before the first release", same, func(e *Engine, sw func()) {
+			down(e, 0)
+			sw()
+			up(e, 30*ms)
+			down(e, 150*ms)
+			up(e, 180*ms)
+		}, []string{"show b1 zoom=false", "show b1 zoom=true"}},
+		{"rebound, switch before the first release", rebound, func(e *Engine, sw func()) {
+			down(e, 0)
+			sw()
+			up(e, 30*ms)
+			down(e, 150*ms)
+			up(e, 180*ms)
+		}, []string{"show b1 zoom=false", `keys "" y`}},
+		{"rebound, switch between the taps", rebound, func(e *Engine, sw func()) {
+			down(e, 0)
+			up(e, 30*ms)
+			sw()
+			down(e, 150*ms)
+			up(e, 180*ms)
+		}, []string{"show b1 zoom=false", `keys "" y`}},
+		{"rebound, switch during the second press", rebound, func(e *Engine, sw func()) {
+			down(e, 0)
+			up(e, 30*ms)
+			down(e, 150*ms)
+			sw()
+			up(e, 180*ms)
+			down(e, 300*ms)
+			up(e, 330*ms)
+		}, []string{"show b1 zoom=false", "show b1 zoom=true", `keys "" y`}},
+	} {
+		e, r := setup(t, c.cfg)
+		e.SetPanes(panes, slots)
+		c.steps(e, func() { e.SetContext("Rex", "claude") })
+		e.Advance(t0.Add(time.Second))
+		if !slices.Equal(r.calls, c.want) {
+			t.Errorf("%s: calls %q, want %q", c.name, r.calls, c.want)
+		}
+	}
+
+	e, r = setup(t, "")
+	e.SetPanes(panes, slots)
+	press(e, "AG00", t0)
+	press(e, "AG00", t0.Add(400*time.Millisecond)) // no timer ran in between
+	want(t, r, "show b1 zoom=false", "show b1 zoom=false")
+
+	for _, keys := range []string{
+		`ACT06 = { press = { builtin = "agent.show" }, double = { builtin = "agent.show_zoom" } }`,
+		`AG00 = { down = { key = "y", target = "agent" }, press = { builtin = "agent.show" }, double = { builtin = "agent.show_zoom" } }`,
+	} {
+		e, r = setup(t, "[[layer]]\nname = \"a\"\n[layer.keys]\n"+keys+"\n")
+		e.SetPanes(panes, slots)
+		key := keys[:5]
+		if key[4] == ' ' {
+			key = key[:4]
+		}
+		e.Input(protocol.Input{Kind: protocol.InputKey, Key: key, Down: true}, t0)
+		e.Input(protocol.Input{Kind: protocol.InputKey, Key: key, Down: false}, t0.Add(30*time.Millisecond))
+		for _, c := range r.calls {
+			if strings.HasPrefix(c, "show") {
+				t.Fatalf("%s showed before the double window passed: %v", key, r.calls)
+			}
+		}
+	}
 }
 
 // A refresh that reorders the keys while a press waits for a possible double
@@ -153,25 +272,22 @@ func TestAgentKeyKeepsThePaneItWasPressedOn(t *testing.T) {
 
 	e.SetPanes(before, a.Assign(before, e.cfg.Agents))
 	press(e, "AG00", t0)
-	e.SetPanes(after, a.Assign(after, e.cfg.Agents)) // B takes AG00
-	e.Advance(t0.Add(400 * time.Millisecond))
 	want(t, r, "show A zoom=false")
-
-	e.SetPanes(before, a.Assign(before, e.cfg.Agents))
-	press(e, "AG00", t0)
-	e.SetPanes(after, a.Assign(after, e.cfg.Agents))
+	e.SetPanes(after, a.Assign(after, e.cfg.Agents)) // B takes AG00
 	press(e, "AG00", t0.Add(150*time.Millisecond))
 	want(t, r, "show A zoom=true")
 
-	// The pane moves to another window while the press waits: show it where
-	// it is now, not where it was.
+	// A press that waits (its double is not just a zoom): the pane moves to
+	// another window meanwhile, so show it where it is now.
+	e, r = setup(t, "[agents]\npress = \"show_zoom\"\ndouble = \"show\"\n")
+	a = agents.Assigner{}
 	inW1 := []rex.Pane{{Block: "A", Window: "W1", App: "claude-code", State: "working", SessionIndex: 1}}
 	inW2 := []rex.Pane{{Block: "A", Window: "W2", App: "claude-code", State: "working", SessionIndex: 1}}
 	e.SetPanes(inW1, a.Assign(inW1, e.cfg.Agents))
 	press(e, "AG00", t0)
 	e.SetPanes(inW2, a.Assign(inW2, e.cfg.Agents))
 	e.Advance(t0.Add(400 * time.Millisecond))
-	want(t, r, "show A zoom=false in W2")
+	want(t, r, "show A zoom=true in W2")
 }
 
 func TestHoldSuppressesPress(t *testing.T) {

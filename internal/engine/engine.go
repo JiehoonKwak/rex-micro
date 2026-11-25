@@ -83,6 +83,7 @@ type keyState struct {
 	downAt       time.Time
 	holdFired    bool
 	tapAt        time.Time // first tap of a possible double, zero when none pending
+	pressed      bool      // the press already fired on the first down (eager)
 	binding      *config.KeyBinding
 	app, program string // context when the gesture began; its actions target it
 	layer        string // the active layer's name then
@@ -268,10 +269,14 @@ func (e *Engine) keyDown(name string, now time.Time) {
 	if s.down {
 		return
 	}
+	if !s.tapAt.IsZero() && now.Sub(s.tapAt) >= e.cfg.Timing.DoublePress.Duration {
+		e.Advance(now) // the tap expired before its timer ran: not a double
+	}
 	b := e.binding(name)
-	if s.tapAt.IsZero() {
+	first := s.tapAt.IsZero()
+	if first {
 		// A double completes with the binding and context it started with.
-		s.binding, s.agent = b, ""
+		s.binding, s.agent, s.pressed = b, "", false
 		e.begin(s)
 		if i, ok := agentIndex(name); ok && e.slots[i].Pane != nil {
 			s.agent = e.slots[i].Pane.Block
@@ -280,9 +285,33 @@ func (e *Engine) keyDown(name string, now time.Time) {
 	s.down, s.downAt, s.holdFired = true, now, false
 	s.press = &keyPress{hasDown: gestureAction(s.binding, "down") != nil}
 	e.fire(name, "down", s)
-	if s.binding.Gesture("hold") == nil && s.binding.Gesture("double") == nil {
+	switch {
+	case s.binding.Gesture("hold") == nil && s.binding.Gesture("double") == nil:
+		e.fire(name, "press", s)
+	case first && eager(name, s.binding):
+		s.pressed = true
 		e.fire(name, "press", s)
 	}
+}
+
+// eager reports whether a key's press fires the moment the key goes down
+// although the key also has a double: an Agent Key whose double only adds
+// to its press (agent.show, then agent.show_zoom zooms the same pane, which
+// the key pinned when it went down), so showing at once leaves the same
+// result and saves the tap and the double window, most of its delay. A key
+// with other gestures (hold, down, up) waits as before: an early show would
+// change the agent those act on.
+func eager(name string, b *config.KeyBinding) bool {
+	if _, ok := agentIndex(name); !ok {
+		return false
+	}
+	for _, g := range []string{"hold", "down", "up"} {
+		if gestureAction(b, g) != nil {
+			return false
+		}
+	}
+	p, d := b.Gesture("press"), b.Gesture("double")
+	return p != nil && d != nil && p.Builtin == "agent.show" && d.Builtin == "agent.show_zoom"
 }
 
 func (e *Engine) keyUp(name string, now time.Time) {
@@ -305,6 +334,9 @@ func (e *Engine) keyUp(name string, now time.Time) {
 		e.fire(name, "double", s)
 		return
 	}
+	if s.pressed && !eager(name, e.binding(name)) {
+		return // the layer changed under the press and rebinds the key: the show was the gesture
+	}
 	s.tapAt = now
 }
 
@@ -321,7 +353,9 @@ func (e *Engine) Advance(now time.Time) {
 		}
 		if !s.down && !s.tapAt.IsZero() && now.Sub(s.tapAt) >= e.cfg.Timing.DoublePress.Duration {
 			s.tapAt = time.Time{}
-			e.fire(name, "press", s)
+			if !s.pressed {
+				e.fire(name, "press", s)
+			}
 		}
 	}
 }
@@ -699,9 +733,15 @@ func (e *Engine) setLayer(i int) {
 		return
 	}
 	e.layer = i
-	// Pending double-taps belong to the old layer; held keys keep their binding.
-	for _, s := range e.keys {
-		s.tapAt = time.Time{}
+	// Pending double-taps belong to the old layer; a key that is down
+	// finishes its gesture with the binding it began with. An Agent Key that
+	// already showed its agent keeps its tap while the new layer still has it
+	// show and zoom: the show itself can switch the layer (the program it
+	// brings into view), and the double completes the gesture it began.
+	for name, s := range e.keys {
+		if !s.down && (!s.pressed || !eager(name, e.binding(name))) {
+			s.tapAt = time.Time{}
+		}
 	}
 	e.logf("layer %d (%s)", i+1, e.cfg.Layers[i].Name)
 	if e.OnLayer != nil {
