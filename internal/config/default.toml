@@ -57,6 +57,12 @@ angle_offset = 0.0     # rotate directions if up comes out as right (-1 to 1 = a
 double_press = "300ms"
 hold = "500ms"
 
+[usage]
+# Count how often each binding is used, per day, on this Mac only
+# (usage.json beside the daemon's socket); `rex-micro usage` shows which
+# bindings earn their key. Nothing is counted while `rex-micro press` runs.
+record = true
+
 [pad]
 # The pad's own layers: its bottom-left touch sensor cycles them and its three
 # LEDs show which is on.

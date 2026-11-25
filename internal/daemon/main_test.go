@@ -33,6 +33,9 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	// Nothing a test runs may touch the real daemon's files (its socket, the
+	// usage record beside it); tests that start a daemon set their own.
+	os.Setenv("REX_MICRO_SOCKET", filepath.Join(dir, "daemon.sock"))
 	log := filepath.Join(dir, "self-spawn.log")
 	os.Setenv(spawnLog, log)
 	code := m.Run()

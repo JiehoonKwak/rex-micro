@@ -28,7 +28,13 @@ type Config struct {
 	Stick    StickConfig    `toml:"stick"`
 	Timing   TimingConfig   `toml:"timing"`
 	Pad      PadConfig      `toml:"pad"`
+	Usage    UsageConfig    `toml:"usage"`
 	Layers   []Layer        `toml:"layer"`
+}
+
+// UsageConfig is whether the daemon keeps the usage record (internal/usage).
+type UsageConfig struct {
+	Record bool `toml:"record"`
 }
 
 type RexConfig struct {
