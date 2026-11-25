@@ -236,6 +236,20 @@ func TestEagerShowKeepsItsDouble(t *testing.T) {
 		}
 	}
 
+	// Any key, not only an Agent Key, finishes a double it is in the middle
+	// of with the binding it began with.
+	e, r = setup(t, "[[layer]]\nname = \"base\"\n[layer.keys]\nACT06 = { press = { key = \"a\" }, double = { key = \"b\" } }\n[[layer]]\nname = \"claude\"\nmatch = { program = \"claude\" }\n[layer.keys]\nACT06 = { key = \"y\" }\n")
+	act := func(downKey bool, at time.Duration) {
+		e.Input(protocol.Input{Kind: protocol.InputKey, Key: "ACT06", Down: downKey}, t0.Add(at))
+	}
+	act(true, 0)
+	act(false, 30*ms)
+	act(true, 150*ms)
+	e.SetContext("Rex", "claude")
+	act(false, 180*ms)
+	e.Advance(t0.Add(time.Second))
+	want(t, r, `keys "" b`)
+
 	e, r = setup(t, "")
 	e.SetPanes(panes, slots)
 	press(e, "AG00", t0)
