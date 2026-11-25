@@ -42,7 +42,10 @@ Safety while driving the user's real Rex app:
   as a test. `rex-micro keys` shows what each key does on the active layer.
 - `press` restores the pane shown before (`--keep` skips that). For any
   other key, put the view back yourself (`rex focus` plus
-  `rex -C <app label> do session.select session_id=... window_id=...`).
+  `rex -C <app label> do session.select session_id=... window_id=...`; for a
+  session on another host, send both through `rex -S HOST`, to this app's
+  client there, since the app only finds a session on the server that relays
+  the select).
 - Never restart the Rex server, the app or terminals to make a check pass.
 
 ## Evidence and cleanup

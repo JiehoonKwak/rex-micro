@@ -304,35 +304,96 @@ func (c *Client) Hosts() ([]string, error) {
 	return labels, nil
 }
 
-// appLabel is the label of this Mac's app client. The app joins every host
-// under the same label, which is how a host's snapshot tells this app's
-// sizing from other clients'. It is "" when unknown.
-func (c *Client) appLabel() string {
-	id, err := c.AppClient()
+// appClient is one entry of `rex client ls --json`.
+type appClient struct {
+	ID   string `json:"client_id"`
+	Info struct {
+		Kind  string `json:"kind"`
+		Label string `json:"label"`
+	} `json:"info"`
+	Principal struct {
+		Transport string `json:"transport"`
+	} `json:"principal"`
+	ConnectedAt time.Time `json:"connected_at"`
+}
+
+// clients lists the clients of a server ("" = this Mac's).
+func (c *Client) clients(host string) ([]appClient, error) {
+	out, err := c.run(nil, on(host, "client", "ls", "--json")...)
 	if err != nil {
-		return ""
-	}
-	out, err := c.run(nil, "client", "ls", "--json")
-	if err != nil {
-		return ""
+		return nil, err
 	}
 	var list struct {
-		Clients []struct {
-			ID   string `json:"client_id"`
-			Info struct {
-				Label string `json:"label"`
-			} `json:"info"`
-		} `json:"clients"`
+		Clients []appClient `json:"clients"`
 	}
-	if json.Unmarshal(out, &list) != nil {
+	if err := json.Unmarshal(out, &list); err != nil {
+		return nil, fmt.Errorf("parse client list: %w", err)
+	}
+	return list.Clients, nil
+}
+
+// newestApp is the ID of the most recently connected app client that match
+// accepts, "" when none does: an old connection may linger after Rex restarts.
+func newestApp(list []appClient, match func(appClient) bool) string {
+	var best string
+	var bestAt time.Time
+	for _, cl := range list {
+		if cl.Info.Kind == "app" && match(cl) && (best == "" || cl.ConnectedAt.After(bestAt)) {
+			best, bestAt = cl.ID, cl.ConnectedAt
+		}
+	}
+	return best
+}
+
+// localApp is the ID of this Mac's app in its server's client list: the one
+// pref ([rex] app, a label or ID) names, else the newest app on the local
+// socket; "" when none is connected.
+func localApp(list []appClient, pref string) string {
+	if pref != "" {
+		return newestApp(list, func(cl appClient) bool { return cl.ID == pref || cl.Info.Label == pref })
+	}
+	return newestApp(list, func(cl appClient) bool { return cl.Principal.Transport == "unix" })
+}
+
+// appLabel is the label of this Mac's app client, read afresh. The app joins
+// every host under the same label, which is how a host's snapshot tells this
+// app's sizing from other clients', and how a client action reaches this app
+// through another host's server. It is "" when unknown.
+func (c *Client) appLabel() string {
+	c.mu.Lock()
+	pref := c.App
+	c.mu.Unlock()
+	list, err := c.clients("")
+	if err != nil {
 		return ""
 	}
-	for _, cl := range list.Clients {
+	id := localApp(list, pref)
+	for _, cl := range list {
 		if cl.ID == id {
 			return cl.Info.Label
 		}
 	}
 	return ""
+}
+
+// appOn is this Mac's app client as connected to another host's server: the
+// newest connection there with this app's label. Both lists are read on
+// every call, so an app that reconnected or was reconfigured is followed at
+// once; this costs two rex calls on a press for another host's agent.
+func (c *Client) appOn(host string) (string, error) {
+	label := c.appLabel()
+	if label == "" {
+		return "", errors.New("cannot tell this Mac's Rex app by its label; open Rex")
+	}
+	list, err := c.clients(host)
+	if err != nil {
+		return "", err
+	}
+	id := newestApp(list, func(cl appClient) bool { return cl.Info.Label == label })
+	if id == "" {
+		return "", fmt.Errorf("this Mac's Rex app (%s) is not connected to host %s", label, host)
+	}
+	return id, nil
 }
 
 // Watch calls emit with the panes of this Mac's Rex and of every host in
@@ -576,32 +637,11 @@ func (c *Client) AppClient() (string, error) {
 	if app != "" {
 		return app, nil // configured explicitly; nothing to cache or go stale
 	}
-	out, err := c.run(nil, "client", "ls", "--json")
+	list, err := c.clients("")
 	if err != nil {
 		return "", err
 	}
-	var list struct {
-		Clients []struct {
-			ID   string `json:"client_id"`
-			Info struct {
-				Kind string `json:"kind"`
-			} `json:"info"`
-			Principal struct {
-				Transport string `json:"transport"`
-			} `json:"principal"`
-			ConnectedAt time.Time `json:"connected_at"`
-		} `json:"clients"`
-	}
-	if err := json.Unmarshal(out, &list); err != nil {
-		return "", fmt.Errorf("parse client list: %w", err)
-	}
-	var best string
-	var bestAt time.Time
-	for _, cl := range list.Clients {
-		if cl.Info.Kind == "app" && cl.Principal.Transport == "unix" && (best == "" || cl.ConnectedAt.After(bestAt)) {
-			best, bestAt = cl.ID, cl.ConnectedAt
-		}
-	}
+	best := localApp(list, "")
 	if best == "" {
 		return "", errors.New("no Rex app is connected on this Mac; open Rex")
 	}
@@ -622,7 +662,22 @@ func (c *Client) ForgetApp() { c.mu.Lock(); c.resolved = ""; c.mu.Unlock() }
 // Perform runs an action as the Rex app: a client action (pane.zoom), a Rex
 // config action defined with rex.action, or a block action.
 func (c *Client) Perform(action string, args map[string]string) error {
-	app, err := c.AppClient()
+	return c.performOn("", action, args)
+}
+
+// performOn runs an action as the Rex app, sent through host's server ("" =
+// this Mac's). The app looks up the session an action names on the server
+// that relayed it (Rex Mac 2128 answers SessionNotFoundOnServer otherwise),
+// so an action about another host's session goes through that host, to this
+// app's client there.
+func (c *Client) performOn(host, action string, args map[string]string) error {
+	var app string
+	var err error
+	if host == "" {
+		app, err = c.AppClient()
+	} else {
+		app, err = c.appOn(host)
+	}
 	if err != nil {
 		return err
 	}
@@ -635,7 +690,7 @@ func (c *Client) Perform(action string, args map[string]string) error {
 	for _, k := range keys {
 		argv = append(argv, k+"="+args[k])
 	}
-	_, err = c.run(nil, argv...)
+	_, err = c.run(nil, on(host, argv...)...)
 	if err != nil && strings.Contains(err.Error(), "client") {
 		c.ForgetApp()
 	}
@@ -646,12 +701,12 @@ func (c *Client) Perform(action string, args map[string]string) error {
 // then have the app select its session and window. The order matters: the
 // app does not follow a focus change in a session it already shows, so
 // focusing after the select left the old pane on screen. A pane on another
-// host is focused on that host; this Mac's app shows any host's session.
+// host is focused, and its session selected, through that host's server.
 func (c *Client) Show(p Pane) error {
 	if _, err := c.run(nil, on(p.Host, "focus", "-s", p.Session, p.Block)...); err != nil {
 		return err
 	}
-	return c.Perform("session.select", map[string]string{"session_id": p.Session, "window_id": p.Window})
+	return c.performOn(p.Host, "session.select", map[string]string{"session_id": p.Session, "window_id": p.Window})
 }
 
 // Zoom sets a block's zoom.

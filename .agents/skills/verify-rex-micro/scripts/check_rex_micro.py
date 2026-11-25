@@ -91,9 +91,23 @@ def judge_press(target, before, after_focus, after_sized, pressed_at):
     return fails
 
 
+def app_on(host, label):
+    """This Mac's app as a client of host's server: the newest connection
+    with its label (an old one may linger after Rex restarts)."""
+    apps = [c for c in rexj(host, "client", "ls", "--json")["clients"]
+            if (c.get("info") or {}).get("kind") == "app" and (c.get("info") or {}).get("label") == label]
+    if not apps:
+        raise RuntimeError(f"this Mac's Rex app ({label}) is not connected to {host}")
+    return max(apps, key=lambda c: c.get("connected_at") or "")["client_id"]
+
+
 def show(host, session, window, block, label):
+    """Focus block and have the app show its session. The app finds a session
+    only on the server that relays the select (Rex Mac 2128), so a host's
+    session is selected through that host."""
     rex(host, "focus", "-s", session, block)
-    rex("", "-C", label, "do", "session.select", f"session_id={session}", f"window_id={window}")
+    app = app_on(host, label) if host else label
+    rex(host, "-C", app, "do", "session.select", f"session_id={session}", f"window_id={window}")
 
 
 def press(key, double, keep):
