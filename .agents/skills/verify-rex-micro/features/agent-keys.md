@@ -1,6 +1,6 @@
 # Agent Keys reach the right pane
 
-**Covers:** `internal/daemon/`, `internal/engine/`, `internal/agents/`, `internal/rex/`, `internal/cli/cli.go`, `.agents/skills/verify-rex-micro/scripts/check_rex_micro.py` @ a4da753
+**Covers:** `internal/daemon/`, `internal/engine/`, `internal/agents/`, `internal/rex/`, `internal/cli/cli.go`, `.agents/skills/verify-rex-micro/scripts/check_rex_micro.py` @ 860132c
 **Tier:** script
 **Positive control:** a live press of a key whose pane is in another session passes, and `judge-controls` accepts the recorded good results.
 **Negative control:** `judge-controls` must reject a pane focused but its session not shown, the wrong pane focused, a same-ID session on another host, an Agent Key list that drops another host's agent (the v0.1.3 regression) and a key naming the wrong host.
@@ -49,3 +49,12 @@ state. `rex-micro status` lists each key's host, session and pane.
   before pressing.
 - A host that does not answer is skipped by both rex-micro and the helper
   (reported as unreachable), so an all-hosts PASS needs every host reachable.
+- The app finds the session `session.select` names only on the server that
+  relays it (Rex Mac 2128), so a host's pane is selected through
+  `rex -S HOST -C <this app's client there>`; a local `-C` times out with
+  `SessionNotFoundOnServerError`.
+- With no agent on any host, make a test agent there and kill it afterwards:
+  `rex -S HOST new rexmicro-verify -- sh -c 'printf "\033]7501;state=working:app=rexmicro-verify\033\\"; exec sleep 1800'`
+  (Program Status Protocol, OSC 7501). With `order = "priority"` a working
+  agent outranks idle and done ones, so it gets a key even when all six are
+  taken; `rex -S HOST kill SESSION` when done.
