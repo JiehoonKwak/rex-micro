@@ -81,11 +81,14 @@ func TestSaveDropsOldDaysAndSkipsNoChange(t *testing.T) {
 // changes it and saving never writes over it.
 func TestUnreadableRecordIsKept(t *testing.T) {
 	dir := t.TempDir()
-	for name, mode := range map[string]os.FileMode{"broken.json": 0o600, "locked.json": 0o000} {
+	for name, mode := range map[string]os.FileMode{"broken.json": 0o600, "other.json": 0o600, "locked.json": 0o000} {
 		path := filepath.Join(dir, name)
 		content := "{not json"
-		if mode == 0 {
+		switch {
+		case mode == 0:
 			content = `{"days":{}}`
+		case name == "other.json":
+			content = `{"day":{}}` // JSON, but not a record
 		}
 		if err := os.WriteFile(path, []byte(content), mode); err != nil {
 			t.Fatal(err)

@@ -17,6 +17,7 @@ rex-micro config path      # the config file (absent = built-in default)
 rex-micro keys             # what every key does, per layer, after fall-through
 rex-micro status --json    # pad, active layer, which pane each Agent Key follows
 rex-micro doctor           # Rex, pad, permission and config checks
+rex-micro usage            # uses per binding, least used first: read before freeing a key
 ```
 
 If the config file does not exist, create it with `rex-micro config init`

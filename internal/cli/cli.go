@@ -51,6 +51,7 @@ Configuration:
   config check [FILE]  validate a config file
   config edit          open the config in $EDITOR
   keys [--layer NAME]  show what every key does
+  usage [--days N]     how often each binding was used (default 30 days), least used first
   edit                 edit bindings and layers on screen; press a pad control to pick it
   actions              list the Rex actions a binding can use
 
@@ -103,6 +104,8 @@ func Main(args []string) int {
 		err = configCmd(args[1:])
 	case "keys":
 		err = keys(args[1:])
+	case "usage":
+		err = usageCmd(args[1:])
 	case "edit":
 		err = edit()
 	case "actions":

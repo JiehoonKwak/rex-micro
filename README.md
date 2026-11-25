@@ -223,11 +223,24 @@ moving between sessions and splits.
 ### Usage record
 
 The daemon counts how often each binding is used, per day, in `usage.json`
-beside its socket, on this Mac only. A binding counts once per use (a
-push-to-talk's down and up are one), under the layer that binds it; a key
-rebound to another action starts from zero, a new label alone keeps the
-count. Nothing is counted while a `rex-micro press` runs. A `usage.json`
-that cannot be read is left as it is and never written over. Turn it off
+beside its socket, on this Mac only. `rex-micro usage` lists every binding
+of every layer with its uses over the last 30 days (`--days N` for another
+window), the days it was used on, and when it was last used, least used
+first, so the keys worth rebinding come first:
+
+```text
+layer agents
+  KEY    GESTURE  DOES        USES  DAYS  LAST
+  ACT09  press    Forward        0     0  never
+  ACT07  press    Close pane     4     2  2026-12-09
+```
+
+A binding counts once per use (a push-to-talk's down and up are one),
+under the layer that binds it; a key rebound to another action starts from
+zero, a new label alone keeps the count. Nothing is counted while a `rex-micro press` runs. A `usage.json`
+that cannot be read is left as it is and never written over;
+`rex-micro usage` names it, and after you fix or remove it,
+`rex-micro service install` restarts the daemon to record again. Turn it off
 with
 
 ```toml
@@ -255,6 +268,7 @@ Then ask your agent something like "make the dial switch Rex tabs on a second la
 | `rex-micro doctor` | Check Rex, the pad, permissions, the config and conflicting apps |
 | `rex-micro status` | Show the pad connection, the active layer and the pane each Agent Key follows |
 | `rex-micro press KEY` | Handle a key as if pressed on the pad (`--double`, `--hold`), to try a binding without the pad |
+| `rex-micro usage` | How often each binding was used, least used first (`--days N`) |
 | `rex-micro test` | Guided hardware check: press each key and confirm the lights (`--lights` for the lights only) |
 | `rex-micro monitor` | Print raw pad events |
 | `rex-micro lights demo` | Play the Agent Key colors (useful for recordings) |

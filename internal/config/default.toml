@@ -59,8 +59,8 @@ hold = "500ms"
 
 [usage]
 # Count how often each binding is used, per day, on this Mac only
-# (usage.json beside the daemon's socket), to show which bindings earn
-# their key. Nothing is counted while `rex-micro press` runs.
+# (usage.json beside the daemon's socket); `rex-micro usage` shows which
+# bindings earn their key. Nothing is counted while `rex-micro press` runs.
 record = true
 
 [pad]

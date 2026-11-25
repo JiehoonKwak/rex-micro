@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
+	"os"
 	"time"
 )
 
@@ -24,10 +26,32 @@ func Press(key, gesture string) (Pressed, error) {
 	return out, err
 }
 
+// Usage asks the running daemon for its usage report over days days. It
+// returns ErrNotRunning only when no daemon listens; any other failure,
+// including a daemon too old for the command, is an error, never a report.
+func Usage(days int) (Report, error) {
+	var out Report
+	if err := call(request{Cmd: "usage", Days: days}, 5*time.Second, &out); err != nil {
+		if _, serr := os.Stat(SocketPath()); errors.Is(err, ErrNotRunning) && !errors.Is(serr, fs.ErrNotExist) {
+			// A socket that is there but does not answer may be a daemon
+			// that is busy or not ours to reach: not proof that none runs.
+			return Report{}, fmt.Errorf("the daemon's socket %s did not answer: %v", SocketPath(), err)
+		}
+		return Report{}, err
+	}
+	if out.Error != "" {
+		return Report{}, fmt.Errorf("the running daemon could not report usage: %s", out.Error)
+	}
+	if out.Version != UsageReportVersion || out.Record == nil || out.Rows == nil || out.Days != min(max(days, 1), MaxUsageDays) {
+		return Report{}, errors.New("the running daemon sent no usage report this rex-micro can read")
+	}
+	return out, nil
+}
+
 func call(r request, timeout time.Duration, out any) error {
 	c, err := net.DialTimeout("unix", SocketPath(), time.Second)
 	if err != nil {
-		return ErrNotRunning
+		return fmt.Errorf("%w (%v)", ErrNotRunning, err)
 	}
 	defer c.Close()
 	_ = c.SetDeadline(time.Now().Add(timeout))
