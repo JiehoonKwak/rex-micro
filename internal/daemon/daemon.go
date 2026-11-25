@@ -42,6 +42,7 @@ type request struct {
 	Cmd     string          `json:"cmd"`
 	Key     string          `json:"key,omitempty"`     // press
 	Gesture string          `json:"gesture,omitempty"` // press: press, double or hold
+	Days    int             `json:"days,omitempty"`    // usage: the report's window
 	input   *protocol.Input // a synthesized pad input (press.go)
 	idle    chan bool       // asks whether the engine has gestures pending
 	fw      *micro.Status
@@ -49,6 +50,34 @@ type request struct {
 	padLost error // a layer notice the pad never took
 	reply   chan any
 	done    chan struct{} // closed when a pausing client disconnects
+}
+
+// Report is the usage report the daemon gives `rex-micro usage`: every use
+// its applied bindings can count with the live counts over the last Days
+// days, so a use made since the last save shows too.
+type Report struct {
+	Version int         `json:"version"`          // UsageReportVersion
+	Record  *bool       `json:"record,omitempty"` // whether recording is on; always set in a report
+	Days    int         `json:"days"`
+	Rows    []usage.Row `json:"rows"`
+	Since   string      `json:"since"` // the record's first day, "" when empty
+	Error   string      `json:"error,omitempty"`
+}
+
+// UsageReportVersion names the report's format; the CLI reads no other.
+const UsageReportVersion = 1
+
+// MaxUsageDays bounds a report's window.
+const MaxUsageDays = 3660
+
+// NewReport is the report on bindings uses from log over days days.
+func NewReport(record bool, uses []usage.Use, log *usage.Log, days int, now time.Time) Report {
+	days = min(max(days, 1), MaxUsageDays)
+	rows, since := log.Report(uses, days, now)
+	if rows == nil {
+		rows = []usage.Row{}
+	}
+	return Report{Version: UsageReportVersion, Record: &record, Days: days, Rows: rows, Since: since}
 }
 
 // UsagePath is where the daemon keeps the usage record.
@@ -238,7 +267,7 @@ func Start(opts Options) error {
 	d.lightsOff()
 	helper.stop()
 	d.pad.Close()
-	if err := d.usage.Save(UsagePath(), time.Now()); err != nil && !d.usage.Frozen() {
+	if err := d.usage.Save(UsagePath(), time.Now()); err != nil && d.usage.Err() == nil {
 		logger.Printf("usage record: %v", err)
 	}
 	return err
@@ -253,7 +282,7 @@ func (d *daemon) saveUsage(stop <-chan struct{}) {
 		case <-stop:
 			return
 		case now := <-t.C:
-			if err := d.usage.Save(UsagePath(), now); err != nil && !d.usage.Frozen() {
+			if err := d.usage.Save(UsagePath(), now); err != nil && d.usage.Err() == nil {
 				d.logger.Printf("usage record: %v", err)
 			}
 		}
@@ -545,6 +574,12 @@ func (d *daemon) onRequest(r request, logger *log.Logger) {
 	switch {
 	case r.fw == nil && r.Cmd == "status":
 		r.reply <- d.snapshotStatus()
+	case r.Cmd == "usage":
+		if err := d.usage.Err(); err != nil {
+			r.reply <- Report{Error: err.Error()}
+			return
+		}
+		r.reply <- NewReport(d.cfg.Usage.Record, d.eng.Bound(), d.usage, r.Days, time.Now())
 	case r.Cmd == "reload":
 		if err := d.reload(logger); err != nil {
 			r.reply <- map[string]string{"error": err.Error()}

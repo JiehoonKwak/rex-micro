@@ -60,7 +60,7 @@ ACT09 = { shortcut = "cmd+w", label = "Close tab" }
 	if !slices.Equal(got, want) {
 		t.Errorf("uses\n got %q\nwant %q", got, want)
 	}
-	// What a report lists is what counting records, unused ones too.
+	// What `rex-micro usage` lists is what counting records, unused ones too.
 	listed := map[usage.Use]bool{}
 	for i := range e.cfg.Layers {
 		for _, u := range e.Uses(i) {

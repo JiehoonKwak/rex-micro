@@ -1,5 +1,5 @@
 // Package usage owns the pad's usage record: how often each binding was
-// used, per day, so a report can show which bindings earn their
+// used, per day, so `rex-micro usage` can show which bindings earn their
 // key. Only the daemon adds to it, and only for presses on the pad itself.
 package usage
 
@@ -24,7 +24,7 @@ type Use struct {
 	Key     string `json:"key"`
 	Gesture string `json:"gesture"`
 	Action  string `json:"action"`
-	Does    string `json:"does,omitempty"`
+	Does    string `json:"does"`
 }
 
 func (u Use) id() Use { u.Does = ""; return u }
@@ -70,13 +70,22 @@ func Load(path string) (*Log, error) {
 	if err == nil {
 		err = json.Unmarshal(b, &f)
 	}
+	if err == nil && f.Days == nil {
+		err = errors.New(`no "days": not a usage record`)
+	}
 	if err != nil {
-		l.frozen = fmt.Errorf("%s cannot be read (%v); keeping it and saving nothing until it is fixed or removed", path, err)
-		return l, l.frozen
+		return frozen(l, path, err)
 	}
 	for d, cs := range f.Days {
+		if _, err := time.Parse(day, d); err != nil {
+			return frozen(l, path, fmt.Errorf("day %q: %w", d, err))
+		}
 		m := map[Use]int{}
 		for _, c := range cs {
+			// An entry missing its binding or count would read as no use.
+			if c.Layer == "" || c.Key == "" || c.Gesture == "" || c.Action == "" || c.N < 1 {
+				return frozen(l, path, fmt.Errorf("an incomplete entry on %s: %+v", d, c))
+			}
 			m[c.Use.id()] += c.N
 		}
 		l.days[d] = m
@@ -84,12 +93,19 @@ func Load(path string) (*Log, error) {
 	return l, nil
 }
 
-// Frozen reports whether the record will not save because Load could not
-// read the file (Load's error said so once).
-func (l *Log) Frozen() bool {
+// Err is why the record will not save, nil when it will: Load could not
+// read the file, so its counts cannot be vouched for either.
+func (l *Log) Err() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.frozen != nil
+	return l.frozen
+}
+
+// frozen is the empty, unsaving record Load gives for a file it cannot use.
+func frozen(l *Log, path string, err error) (*Log, error) {
+	l.days = map[string]map[Use]int{}
+	l.frozen = fmt.Errorf("%s cannot be read (%v); keeping it and saving nothing until it is fixed or removed", path, err)
+	return l, l.frozen
 }
 
 // Add counts one use at time at.
@@ -189,9 +205,9 @@ func writeAtomic(path string, b []byte) error {
 // Row is one binding's use over a window of days.
 type Row struct {
 	Use
-	Uses int    // times used
-	Days int    // days it was used on
-	Last string // the last day it was used ("2006-01-02"), "" for never
+	Uses int    `json:"uses"` // times used
+	Days int    `json:"days"` // days it was used on
+	Last string `json:"last"` // the last day it was used ("2006-01-02"), "" for never
 }
 
 // Report counts each of uses over the days days ending with now's day,

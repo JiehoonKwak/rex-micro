@@ -580,8 +580,17 @@ func actionID(a *config.Action) string {
 	return string(b)
 }
 
+// Bound lists every use the config's bindings can count, layer by layer.
+func (e *Engine) Bound() []usage.Use {
+	var out []usage.Use
+	for i := range e.cfg.Layers {
+		out = append(out, e.Uses(i)...)
+	}
+	return out
+}
+
 // Uses lists every use layer i's own bindings can count, in pad order: what
-// a usage report covers, including the ones never used.
+// `rex-micro usage` reports on, including the ones never used.
 func (e *Engine) Uses(i int) []usage.Use {
 	var out []usage.Use
 	for _, name := range config.KeyNames {
