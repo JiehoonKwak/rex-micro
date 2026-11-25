@@ -220,6 +220,21 @@ layer (`[agents] always = true`), let layers turn on by `program` (lazygit, a
 diff tool) or `app` (a browser), and keep a hand-picked layer for things like
 moving between sessions and splits.
 
+### Usage record
+
+The daemon counts how often each binding is used, per day, in `usage.json`
+beside its socket, on this Mac only. A binding counts once per use (a
+push-to-talk's down and up are one), under the layer that binds it; a key
+rebound to another action starts from zero, a new label alone keeps the
+count. Nothing is counted while a `rex-micro press` runs. A `usage.json`
+that cannot be read is left as it is and never written over. Turn it off
+with
+
+```toml
+[usage]
+record = false
+```
+
 ## For agents
 
 rex-micro ships an agent skill that teaches coding agents to edit this config

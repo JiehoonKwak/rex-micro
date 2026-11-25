@@ -102,6 +102,13 @@ func (l *pressLog) add(line string) {
 	l.mu.Unlock()
 }
 
+// running reports whether a press is running.
+func (l *pressLog) running() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.on
+}
+
 // start begins collecting; false when a press is already running.
 func (l *pressLog) start() bool {
 	l.mu.Lock()

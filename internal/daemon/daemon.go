@@ -26,6 +26,7 @@ import (
 	"github.com/JiehoonKwak/rex-micro/internal/micro"
 	"github.com/JiehoonKwak/rex-micro/internal/protocol"
 	"github.com/JiehoonKwak/rex-micro/internal/rex"
+	"github.com/JiehoonKwak/rex-micro/internal/usage"
 )
 
 // SocketPath is where the daemon listens for the CLI.
@@ -50,7 +51,14 @@ type request struct {
 	done    chan struct{} // closed when a pausing client disconnects
 }
 
+// UsagePath is where the daemon keeps the usage record.
+func UsagePath() string { return filepath.Join(filepath.Dir(SocketPath()), "usage.json") }
+
+// usageSaveEvery is how often the usage record is written while it changes.
+const usageSaveEvery = 30 * time.Second
+
 type daemon struct {
+	usage    *usage.Log
 	logger   *log.Logger
 	cfgPath  string
 	cfg      *config.Config
@@ -186,6 +194,17 @@ func Start(opts Options) error {
 	d.eng = engine.New(cfg, executor{rex: d.rex, post: opts.Shortcut, hold: opts.HoldShortcut, front: opts.FrontApp, program: program, logf: logf}, d.enqueue, logf)
 	d.eng.OnLayer = d.onLayer
 	d.eng.OnKeys = d.onKeys
+	if d.usage, err = usage.Load(UsagePath()); err != nil {
+		logger.Printf("usage record: %v", err)
+	}
+	d.eng.OnUse = func(u usage.Use) {
+		// While `rex-micro press` runs, its gestures and any the pad makes
+		// alongside can mix; none of them is counted.
+		if d.cfg.Usage.Record && !d.presses.running() {
+			d.usage.Add(u, time.Now())
+		}
+	}
+	go d.saveUsage(opts.Stop)
 	helper := &overlayHelper{exe: exe, logf: logger.Printf}
 	d.keys = helper
 	d.warmKeys()
@@ -219,7 +238,26 @@ func Start(opts Options) error {
 	d.lightsOff()
 	helper.stop()
 	d.pad.Close()
+	if err := d.usage.Save(UsagePath(), time.Now()); err != nil && !d.usage.Frozen() {
+		logger.Printf("usage record: %v", err)
+	}
 	return err
+}
+
+// saveUsage writes the usage record off the loop while it changes.
+func (d *daemon) saveUsage(stop <-chan struct{}) {
+	t := time.NewTicker(usageSaveEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case now := <-t.C:
+			if err := d.usage.Save(UsagePath(), now); err != nil && !d.usage.Frozen() {
+				d.logger.Printf("usage record: %v", err)
+			}
+		}
+	}
 }
 
 // rexCLI is the process's one rex.CLI; RexCLI hands it out.

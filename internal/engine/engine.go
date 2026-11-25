@@ -5,6 +5,7 @@
 package engine
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -17,6 +18,7 @@ import (
 	"github.com/JiehoonKwak/rex-micro/internal/config"
 	"github.com/JiehoonKwak/rex-micro/internal/protocol"
 	"github.com/JiehoonKwak/rex-micro/internal/rex"
+	"github.com/JiehoonKwak/rex-micro/internal/usage"
 )
 
 // Executor performs the side effects of bindings.
@@ -69,6 +71,10 @@ type Engine struct {
 	app, program string
 	matched      string // layer the context last selected, by name
 
+	// OnUse is called when a binding does something: once per use (a
+	// down/up pair counts as its down).
+	OnUse func(usage.Use)
+
 	// OnKeys is called when the keys overlay (keys.show) should appear or go.
 	OnKeys    func(show bool)
 	keysShown bool
@@ -87,6 +93,7 @@ type keyState struct {
 	binding      *config.KeyBinding
 	app, program string // context when the gesture began; its actions target it
 	layer        string // the active layer's name then
+	owner        string // the name of the layer whose binding this is
 	// target is a copy of the selected agent pane then (agentPane), which
 	// key and text bindings with an agent target and shell bindings act on,
 	// so a refresh or another selection during a double-press or hold wait
@@ -277,7 +284,7 @@ func (e *Engine) keyDown(name string, now time.Time) {
 	if first {
 		// A double completes with the binding and context it started with.
 		s.binding, s.agent, s.pressed = b, "", false
-		e.begin(s)
+		e.begin(name, s)
 		if i, ok := agentIndex(name); ok && e.slots[i].Pane != nil {
 			s.agent = e.slots[i].Pane.Block
 		}
@@ -417,10 +424,7 @@ func (e *Engine) binding(name string) *config.KeyBinding {
 		return b
 	}
 	if _, ok := agentIndex(name); ok {
-		return &config.KeyBinding{
-			Press:  agentDefault(e.cfg.Agents.Press),
-			Double: agentDefault(e.cfg.Agents.Double),
-		}
+		return e.agentDefault()
 	}
 	return nil
 }
@@ -495,7 +499,7 @@ func agentDefault(v string) *config.Action {
 // fireNow fires the press of a control with no held state (dial, stick).
 func (e *Engine) fireNow(name string, b *config.KeyBinding) {
 	s := &keyState{binding: b}
-	e.begin(s)
+	e.begin(name, s)
 	e.fire(name, "press", s)
 }
 
@@ -511,10 +515,13 @@ func gestureAction(b *config.KeyBinding, gesture string) *config.Action {
 	return b.Gesture(gesture)
 }
 
-// begin records the context a gesture starts in: the app and program in
-// front, the active layer, and the selected agent pane.
-func (e *Engine) begin(s *keyState) {
+// begin records the context key name's gesture starts in: the app and
+// program in front, the active layer, the layer that binds the key, and the
+// selected agent pane.
+func (e *Engine) begin(name string, s *keyState) {
 	s.app, s.program, s.layer, s.target = e.app, e.program, e.cfg.Layers[e.layer].Name, nil
+	_, owner := e.layerBinding(name)
+	s.owner = e.cfg.Layers[max(owner, 0)].Name
 	if p := e.agentPane(); p != nil {
 		cp := *p
 		s.target = &cp
@@ -528,10 +535,87 @@ func (e *Engine) fire(name, gesture string, s *keyState) {
 	}
 	e.cur, e.gesture, e.queued = s, gesture, false
 	defer func() { e.cur, e.gesture = nil, "" }()
+	e.countUse(name, gesture, s)
 	e.do(name, a)
 	if gesture == "down" && !e.queued && s.press != nil {
 		s.press.started.Store(true) // a builtin acts at once
 	}
+}
+
+// countUse reports one use of a binding to OnUse.
+func (e *Engine) countUse(name, gesture string, s *keyState) {
+	if e.OnUse == nil {
+		return
+	}
+	if u, ok := useOf(s.owner, name, gesture, s.binding); ok {
+		e.OnUse(u)
+	}
+}
+
+// useOf is the use a gesture of binding b counts as. A key's up is part of
+// the use its down began, and a held shortcut (down and up) is one press.
+func useOf(layer, name, gesture string, b *config.KeyBinding) (usage.Use, bool) {
+	a := gestureAction(b, gesture)
+	if a == nil || (gesture == "up" && gestureAction(b, "down") != nil) {
+		return usage.Use{}, false
+	}
+	what := actionID(a)
+	if b.HeldShortcut() != nil {
+		gesture = "press"
+	} else if gesture == "down" {
+		what += " / up: " + actionID(gestureAction(b, "up")) // the release is part of it
+	}
+	return usage.Use{Layer: layer, Key: name, Gesture: gesture, Action: what, Does: Brief(a)}, true
+}
+
+// actionID is what an action does, without its label: a binding's identity
+// in the usage record. Encoding JSON sorts map keys, so it is stable.
+func actionID(a *config.Action) string {
+	if a == nil {
+		return "-"
+	}
+	c := *a
+	c.Label = ""
+	b, _ := json.Marshal(c)
+	return string(b)
+}
+
+// Uses lists every use layer i's own bindings can count, in pad order: what
+// a usage report covers, including the ones never used.
+func (e *Engine) Uses(i int) []usage.Use {
+	var out []usage.Use
+	for _, name := range config.KeyNames {
+		b := e.OwnBinding(i, name)
+		if b == nil {
+			continue
+		}
+		for _, g := range []string{"press", "double", "hold", "down", "up"} {
+			if u, ok := useOf(e.cfg.Layers[i].Name, name, g, b); ok && (len(out) == 0 || out[len(out)-1] != u) {
+				out = append(out, u)
+			}
+		}
+	}
+	return out
+}
+
+// OwnBinding is what layer i itself binds key name to, nil for a key it
+// leaves to the base; the base also has the Agent Keys' [agents] defaults.
+func (e *Engine) OwnBinding(i int, name string) *config.KeyBinding {
+	_, agent := agentIndex(name)
+	if i == 0 && agent && e.cfg.Agents.Always {
+		return e.agentDefault()
+	}
+	if agent && e.cfg.Agents.Always {
+		return nil
+	}
+	if b := e.cfg.Layers[i].Keys[name]; b != nil || i > 0 || !agent {
+		return b
+	}
+	return e.agentDefault()
+}
+
+func (e *Engine) agentDefault() *config.KeyBinding {
+	return &config.KeyBinding{Press: agentDefault(e.cfg.Agents.Press), Double: agentDefault(e.cfg.Agents.Double)}
 }
 
 func (e *Engine) do(name string, a *config.Action) {
