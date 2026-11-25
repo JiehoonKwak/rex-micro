@@ -36,6 +36,8 @@ Work Louder Input app. It is a public showcase for Rex, so behaviour belongs in
   `scripts/make-signing-cert.sh` (see `docs/releasing.md`); never commit the
   `.p12` or its password.
 - README and docs are English, short and plain.
+- Rex release notes and docs: the `superlogical` MCP (`read_changelog`), in
+  `.mcp.json`, `.codex/config.toml`, `.agents/mcp_config.json`; Discord login.
 - Verify in the real Rex app before reporting a change to keys, Agent Keys,
   layers or Rex following as done:
   [verify-rex-micro](.agents/skills/verify-rex-micro/SKILL.md) drives keys
