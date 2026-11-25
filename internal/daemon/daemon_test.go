@@ -1,7 +1,9 @@
 package daemon
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 
 	"context"
 	"log"
@@ -63,7 +65,11 @@ const snapshotJSON = `[{"session":"s1","session_label":"api","session_index":1,"
 func (f *fakeRex) Run(_ context.Context, stdin []byte, args ...string) ([]byte, error) {
 	call := strings.Join(args, " ")
 	f.mu.Lock()
-	if call != "do -" {
+	var show map[string]string
+	if a, ok := strings.CutPrefix(call, "do - --args "); ok && json.Unmarshal([]byte(a), &show) == nil {
+		// rex.Client.Show's script (show.lua) and the pane it names
+		f.calls = append(f.calls, fmt.Sprintf("show session=%s window=%s block=%s", show["session"], show["window"], show["block"]))
+	} else if call != "do -" {
 		f.calls = append(f.calls, call)
 	}
 	f.mu.Unlock()
@@ -85,19 +91,6 @@ func (f *fakeRex) has(want string) bool {
 		}
 	}
 	return false
-}
-
-// inOrder reports whether every call in want was made, in that order.
-func (f *fakeRex) inOrder(want ...string) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	i := 0
-	for _, c := range f.calls {
-		if i < len(want) && c == want[i] {
-			i++
-		}
-	}
-	return i == len(want)
 }
 
 func eventually(t *testing.T, what string, ok func() bool) {
@@ -147,14 +140,11 @@ func TestDaemonEndToEnd(t *testing.T) {
 	dev.events <- report(t, `{"m":"v.oai.hid","p":{"k":"ACT07","act":0,"ag":0}}`)
 	eventually(t, "Enter to the focused pane", func() bool { return rx.has("-C client:app do pane.send_key key=enter") })
 
-	// Agent Key 1 brings the agent's session and pane into view (after the
-	// double-press window): focus the block first, then select the session,
-	// or the app keeps showing the old pane of a session already on screen.
+	// Agent Key 1 brings the agent's session and pane into view as it goes
+	// down: its double only adds the zoom.
 	dev.events <- report(t, `{"m":"v.oai.hid","p":{"k":"AG00","act":1,"ag":0}}`)
+	eventually(t, "show agent pane", func() bool { return rx.has("show session=s1 window=w1 block=b1") })
 	dev.events <- report(t, `{"m":"v.oai.hid","p":{"k":"AG00","act":0,"ag":0}}`)
-	eventually(t, "show agent pane", func() bool {
-		return rx.inOrder("focus -s s1 b1", "-C client:app do session.select session_id=s1 window_id=w1")
-	})
 
 	var st Status
 	if err := Call("status", &st); err != nil {

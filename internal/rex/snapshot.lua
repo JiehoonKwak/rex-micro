@@ -1,55 +1,17 @@
 -- rex-micro: list every pane in every session with its agent state. Each
 -- session's focused terminal also reports its foreground program and when an
 -- app last sized it, which tells which session the Rex app is showing.
--- rex-micro prepends `local app_pref = "<label or ID>"` (rex.app, "" = auto)
--- and `local watch = <seconds>` (0 = print one snapshot and return).
--- Only that app's sizing counts, since another client (a phone, a second Mac)
--- sizes what it shows. The client is looked up on every snapshot, so a Rex
--- restart (a new client ID) is picked up at once.
+-- rex-micro prepends `local app_pref = "<label or ID>"` (rex.app, "" = auto),
+-- `local watch = <seconds>` (0 = print one snapshot and return) and
+-- shared.lua. Only that app's sizing counts, since another client (a
+-- phone, a second Mac) sizes what it shows. The client is looked up on every
+-- snapshot, so a Rex restart (a new client ID) is picked up at once.
 local terminal = "com.superlogical.terminal"
 -- Most urgent first, the same order the pad's agent keys use.
 local urgency = { blocked = 0, error = 0, done = 1, working = 2, idle = 3 }
 
-local function app_client()
-  local found, newest = "", ""
-  for _, c in ipairs((rex.call("client.list", {}) or {}).clients or {}) do
-    local info = c.info or {}
-    local wanted
-    if app_pref ~= "" then
-      wanted = c.client_id == app_pref or info.label == app_pref
-    else
-      wanted = (c.principal or {}).transport == "unix"
-    end
-    -- The newest match wins: an old connection may linger after Rex restarts.
-    if info.kind == "app" and wanted and (c.connected_at or "") > newest then
-      found, newest = c.client_id, c.connected_at or ""
-    end
-  end
-  return found
-end
-
 -- "/bin/zsh" -> "zsh"; a login shell's argv0 "-zsh" -> "zsh"
 local function base(path) return ((path or ""):match("([^/]+)$") or ""):gsub("^%-", "") end
-
--- instant turns an RFC 3339 time into seconds since 1970, so times with
--- different offsets or fractions compare correctly; 0 when unreadable.
-local function instant(s)
-  local y, mo, d, h, mi, sec, frac, tz = (s or ""):match("^(%d+)-(%d+)-(%d+)[Tt ](%d+):(%d+):(%d+)(%.?%d*)(.*)$")
-  if not y then return 0 end
-  y, mo, d = tonumber(y), tonumber(mo), tonumber(d)
-  if mo <= 2 then y = y - 1 end
-  local era = math.floor(y / 400)
-  local yoe = y - era * 400
-  local doy = math.floor((153 * ((mo + 9) % 12) + 2) / 5) + d - 1
-  local days = era * 146097 + yoe * 365 + math.floor(yoe / 4) - math.floor(yoe / 100) + doy - 719468
-  local t = days * 86400 + tonumber(h) * 3600 + tonumber(mi) * 60 + tonumber(sec) + (tonumber("0" .. frac) or 0)
-  local sign, oh, om = tz:match("^([+-])(%d%d):?(%d%d)$")
-  if sign then
-    local off = tonumber(oh) * 3600 + tonumber(om) * 60
-    t = sign == "+" and t - off or t + off
-  end
-  return t
-end
 
 -- A terminal holds one status record per id: the program's own (no id) and
 -- one per child, such as each Claude subagent. Children without `app` take it
@@ -79,7 +41,7 @@ end
 
 local shown_by = "" -- the app client of the last snapshot
 local function snapshot(attach)
-  local app = app_client()
+  local app = app_client(rex, app_pref) or "" -- "": no such app, so any sizing counts
   shown_by = app
   local panes = {}
   local list = rex.call("session.list", {}) or {}

@@ -22,7 +22,7 @@ func TestPressShowsTheAgentLikeThePad(t *testing.T) {
 		t.Fatalf("press: %v %q", err, out.Error)
 	}
 	// The reply comes after the effect ran, so the caller can check Rex at once.
-	if !rx.inOrder("focus -s s1 b1", "-C client:app do session.select session_id=s1 window_id=w1") {
+	if !rx.has("show session=s1 window=w1 block=b1") {
 		t.Fatalf("pane not shown before the reply; calls %v", rx.calls)
 	}
 	if out.Agent == nil || out.Agent.Block != "b1" || !strings.Contains(out.Binding, "agent.show") {

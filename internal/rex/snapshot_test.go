@@ -21,6 +21,7 @@ var fakeServer = map[string]any{
 		map[string]any{"client_id": "client:app", "info": map[string]any{"kind": "app", "label": "my-mac"}, "principal": map[string]any{"transport": "unix"}, "connected_at": "2026-11-06T00:00:00Z"},
 		map[string]any{"client_id": "client:old", "info": map[string]any{"kind": "app", "label": "my-mac"}, "principal": map[string]any{"transport": "unix"}, "connected_at": "2026-11-05T00:00:00Z"},
 		map[string]any{"client_id": "client:phone", "info": map[string]any{"kind": "app", "label": "phone"}, "principal": map[string]any{"transport": "tcp"}, "connected_at": "2026-11-06T00:00:09Z"},
+		map[string]any{"client_id": "client:nolabel", "info": map[string]any{"kind": "app"}, "principal": map[string]any{"transport": "unix"}, "connected_at": "2026-11-01T00:00:00Z"},
 	}},
 	"session.list": map[string]any{"sessions": []any{
 		map[string]any{"session_id": "sA", "label": "a"},
@@ -119,13 +120,82 @@ type scriptRun struct {
 	handlers map[string]func()
 	timers   []func() // rex.after and rex.every callbacks, in order
 	printed  []string
+	acted    []string // focus_block and client.perform calls, with their arguments
+	err      error    // what the script raised, when it may (runScriptErr)
 }
 
+// failing makes rex.call answer these methods with nil and a message, as Rex does.
+var failing = map[string]string{}
+
 func runScript(t *testing.T, script []byte) *scriptRun {
+	t.Helper()
+	run := runScriptErr(t, script)
+	if run.err != nil {
+		t.Fatalf("script: %v", run.err)
+	}
+	return run
+}
+
+func runScriptErr(t *testing.T, script []byte) *scriptRun { return runWith(t, script, nil) }
+
+// hostServers are the fake servers rex.server(host) reaches.
+var hostServers = map[string]map[string]any{
+	// M1's own app, a connection this Mac's app (my-mac) left behind, and
+	// its current one, whose time sorts first as text (another offset).
+	"M1": {"client.list": map[string]any{"clients": []any{
+		map[string]any{"client_id": "client:m1", "info": map[string]any{"kind": "app", "label": "m1"}, "principal": map[string]any{"transport": "unix"}, "connected_at": "2026-11-06T00:00:09Z"},
+		map[string]any{"client_id": "client:mine-old", "info": map[string]any{"kind": "app", "label": "my-mac"}, "principal": map[string]any{"transport": "tcp"}, "connected_at": "2026-11-06T08:00:00Z"},
+		map[string]any{"client_id": "client:mine", "info": map[string]any{"kind": "app", "label": "my-mac"}, "principal": map[string]any{"transport": "tcp"}, "connected_at": "2026-11-06T07:30:00-02:00"},
+	}}},
+}
+
+// runWith runs script with rex.args set from args (JSON, as --args passes it).
+func runWith(t *testing.T, script []byte, args []byte) *scriptRun {
 	t.Helper()
 	L := lua.NewState()
 	t.Cleanup(L.Close)
 	run := &scriptRun{handlers: map[string]func(){}}
+	attachedTo := map[string]bool{}
+	server := func(host string, data map[string]any) *lua.LFunction {
+		prefix := ""
+		if host != "" {
+			prefix = host + " "
+		}
+		get := func(key string) lua.LValue {
+			if v, ok := data[key]; ok {
+				return toLua(L, v)
+			}
+			return lua.LNil
+		}
+		return L.NewFunction(func(L *lua.LState) int {
+			method := L.CheckString(1)
+			if msg, ok := failing[prefix+method]; ok {
+				L.Push(lua.LNil)
+				L.Push(lua.LString(msg))
+				return 2
+			}
+			switch method {
+			case "session.focus_block", "client.perform":
+				if sid := L.CheckTable(2).RawGetString("session_id").String(); method == "session.focus_block" && !attachedTo[prefix+sid] {
+					L.Push(lua.LNil)
+					L.Push(lua.LString("stream is not attached to session " + sid))
+					return 2
+				}
+				b, _ := json.Marshal(fromLua(L.CheckTable(2)))
+				run.acted = append(run.acted, prefix+method+" "+string(b))
+				L.Push(lua.LNil)
+			case "session.view":
+				L.Push(get("view:" + L.CheckTable(2).RawGetString("session_id").String()))
+			case "session.attach":
+				run.attached++
+				attachedTo[prefix+L.CheckTable(2).RawGetString("session_id").String()] = true
+				L.Push(lua.LNil)
+			default:
+				L.Push(get(method))
+			}
+			return 1
+		})
+	}
 	get := func(key string) lua.LValue {
 		if v, ok := fakeServer[key]; ok {
 			return toLua(L, v)
@@ -133,19 +203,21 @@ func runScript(t *testing.T, script []byte) *scriptRun {
 		return lua.LNil
 	}
 	rexT := L.NewTable()
-	rexT.RawSetString("call", L.NewFunction(func(L *lua.LState) int {
-		method := L.CheckString(1)
-		switch method {
-		case "session.view":
-			L.Push(get("view:" + L.CheckTable(2).RawGetString("session_id").String()))
-		case "session.attach":
-			run.attached++
-			L.Push(lua.LNil)
-		default:
-			L.Push(get(method))
-		}
+	rexT.RawSetString("call", server("", fakeServer))
+	rexT.RawSetString("server", L.NewFunction(func(L *lua.LState) int {
+		host := L.CheckString(1)
+		srv := L.NewTable()
+		srv.RawSetString("call", server(host, hostServers[host]))
+		L.Push(srv)
 		return 1
 	}))
+	if args != nil {
+		var m map[string]any
+		if err := json.Unmarshal(args, &m); err != nil {
+			t.Fatal(err)
+		}
+		rexT.RawSetString("args", toLua(L, m))
+	}
 	block := L.NewTable()
 	block.RawSetString("call", L.NewFunction(func(L *lua.LState) int {
 		L.Push(get(L.CheckString(2) + ":" + L.CheckTable(3).RawGetString("block_id").String()))
@@ -195,11 +267,85 @@ func runScript(t *testing.T, script []byte) *scriptRun {
 	ioT := L.NewTable()
 	ioT.RawSetString("stdout", stdout)
 	L.SetGlobal("io", ioT)
-	if err := L.DoString(string(script)); err != nil {
-		t.Fatalf("snapshot.lua: %v", err)
+	if run.err = L.DoString(string(script)); run.err == nil {
+		run.result = fromLua(L.Get(-1))
 	}
-	run.result = fromLua(L.Get(-1))
 	return run
+}
+
+// showRex runs the scripts Show sends against the fake server.
+type showRex struct {
+	t    *testing.T
+	runs []*scriptRun
+	args []string
+}
+
+func (f *showRex) Run(_ context.Context, stdin []byte, args ...string) ([]byte, error) {
+	f.args = args
+	if len(args) != 4 || strings.Join(args[:3], " ") != "do - --args" {
+		return nil, fmt.Errorf("unexpected rex %v", args)
+	}
+	r := runWith(f.t, stdin, []byte(args[3]))
+	f.runs = append(f.runs, r)
+	return nil, r.err
+}
+
+// Show focuses the pane, then has the app ([rex] app, or the newest app on
+// the local socket) select its session and window, in one rex process; a
+// host's pane through that host's server, as this Mac's app's newest
+// connection there.
+func TestShowScriptFocusesThenSelectsAsTheApp(t *testing.T) {
+	p := Pane{Session: "sB", Window: "wsB", Block: "bB2"}
+	for app, want := range map[string]string{"": "client:app", "my-mac": "client:app", "client:old": "client:old", "phone": "client:phone"} {
+		f := &showRex{t: t}
+		if err := (&Client{Runner: f, App: app}).Show(p); err != nil {
+			t.Fatalf("app %q: %v", app, err)
+		}
+		acted := f.runs[0].acted
+		if len(acted) != 2 ||
+			acted[0] != `session.focus_block {"block_id":"bB2","session_id":"sB"}` ||
+			acted[1] != `client.perform {"action":"session.select","args":{"session_id":"sB","window_id":"wsB"},"client_id":"`+want+`"}` {
+			t.Fatalf("app %q: rex %v did %q", app, f.args, acted)
+		}
+	}
+	remote := Pane{Host: "M1", Session: "rs", Window: "rw", Block: "rb"}
+	f := &showRex{t: t}
+	if err := (&Client{Runner: f}).Show(remote); err != nil {
+		t.Fatal(err)
+	}
+	if acted := f.runs[0].acted; len(acted) != 2 || acted[0] != `M1 session.focus_block {"block_id":"rb","session_id":"rs"}` ||
+		acted[1] != `M1 client.perform {"action":"session.select","args":{"session_id":"rs","window_id":"rw"},"client_id":"client:mine"}` {
+		t.Fatalf("remote: did %q", acted)
+	}
+	// Labels pass through --args untouched, whatever they contain.
+	odd := "Dev \u200d \"q\" \\ é"
+	f = &showRex{t: t}
+	_ = (&Client{Runner: f, App: odd}).Show(p)
+	var got map[string]string
+	if err := json.Unmarshal([]byte(f.args[3]), &got); err != nil || got["app"] != odd {
+		t.Fatalf("args %q: %v", f.args[3], err)
+	}
+	// Rex answers a failed call with nil and a message; Show must fail with it.
+	for method, msg := range map[string]string{"session.focus_block": "no such block", "client.perform": "SessionNotFoundOnServerError", "client.list": "server went away", "M1 client.list": "M1 is down"} {
+		failing[method] = msg
+		pane := p
+		if strings.HasPrefix(method, "M1 ") {
+			pane = remote
+		}
+		err := (&Client{Runner: &showRex{t: t}}).Show(pane)
+		delete(failing, method)
+		if err == nil || !strings.Contains(err.Error(), msg) {
+			t.Fatalf("%s failing: err = %v", method, err)
+		}
+	}
+	if err := (&Client{Runner: &showRex{t: t}, App: "nobody"}).Show(p); err == nil {
+		t.Fatal("no app by that label, but Show succeeded")
+	}
+	// An app without a label cannot be found on another host; never guess.
+	f = &showRex{t: t}
+	if err := (&Client{Runner: f, App: "client:nolabel"}).Show(remote); err == nil || len(f.runs[0].acted) != 0 {
+		t.Fatalf("unlabelled app on M1: err %v, did %q", err, f.runs[0].acted)
+	}
 }
 
 func TestWatchScriptStaysAttachedAndPrintsOnChange(t *testing.T) {

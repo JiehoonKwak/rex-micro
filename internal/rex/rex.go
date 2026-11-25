@@ -17,6 +17,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -26,6 +27,12 @@ import (
 
 //go:embed snapshot.lua
 var snapshotLua []byte
+
+//go:embed shared.lua
+var sharedLua []byte
+
+//go:embed show.lua
+var showLua []byte
 
 // Runner executes the rex CLI. Tests replace it.
 type Runner interface {
@@ -271,7 +278,7 @@ func (c *Client) script(watch time.Duration) []byte {
 // (label or ID; "" = the app on the local socket) as the one showing panes.
 func (c *Client) scriptFor(pref string, watch time.Duration) []byte {
 	head := fmt.Sprintf("local app_pref = %q\nlocal watch = %g\n", pref, watch.Seconds())
-	return append([]byte(head), snapshotLua...)
+	return slices.Concat([]byte(head), sharedLua, snapshotLua)
 }
 
 func parsePanes(out []byte) ([]Pane, error) {
@@ -401,26 +408,6 @@ func (c *Client) appLabel() string {
 		}
 	}
 	return ""
-}
-
-// appOn is this Mac's app client as connected to another host's server: the
-// newest connection there with this app's label. Both lists are read on
-// every call, so an app that reconnected or was reconfigured is followed at
-// once; this costs two rex calls on a press for another host's agent.
-func (c *Client) appOn(host string) (string, error) {
-	label := c.appLabel()
-	if label == "" {
-		return "", errors.New("cannot tell this Mac's Rex app by its label; open Rex")
-	}
-	list, err := c.clients(host)
-	if err != nil {
-		return "", err
-	}
-	id := newestApp(list, func(cl appClient) bool { return cl.Info.Label == label })
-	if id == "" {
-		return "", fmt.Errorf("this Mac's Rex app (%s) is not connected to host %s", label, host)
-	}
-	return id, nil
 }
 
 // Watch calls emit with the panes of this Mac's Rex and of every host in
@@ -689,22 +676,7 @@ func (c *Client) ForgetApp() { c.mu.Lock(); c.resolved = ""; c.mu.Unlock() }
 // Perform runs an action as the Rex app: a client action (pane.zoom), a Rex
 // config action defined with rex.action, or a block action.
 func (c *Client) Perform(action string, args map[string]string) error {
-	return c.performOn("", action, args)
-}
-
-// performOn runs an action as the Rex app, sent through host's server ("" =
-// this Mac's). The app looks up the session an action names on the server
-// that relayed it (Rex Mac 2128 answers SessionNotFoundOnServer otherwise),
-// so an action about another host's session goes through that host, to this
-// app's client there.
-func (c *Client) performOn(host, action string, args map[string]string) error {
-	var app string
-	var err error
-	if host == "" {
-		app, err = c.AppClient()
-	} else {
-		app, err = c.appOn(host)
-	}
+	app, err := c.AppClient()
 	if err != nil {
 		return err
 	}
@@ -717,23 +689,28 @@ func (c *Client) performOn(host, action string, args map[string]string) error {
 	for _, k := range keys {
 		argv = append(argv, k+"="+args[k])
 	}
-	_, err = c.run(nil, on(host, argv...)...)
+	_, err = c.run(nil, argv...)
 	if err != nil && strings.Contains(err.Error(), "client") {
 		c.ForgetApp()
 	}
 	return err
 }
 
-// Show brings a pane into view in the app: focus the block on the server,
-// then have the app select its session and window. The order matters: the
-// app does not follow a focus change in a session it already shows, so
-// focusing after the select left the old pane on screen. A pane on another
-// host is focused, and its session selected, through that host's server.
+// Show brings a pane into view in the app: show.lua focuses the block and
+// has the app select its session and window, in one rex process on this Mac
+// that reaches another host's server itself. Measured on M3 with Rex 2128,
+// that takes about 65 ms for a local pane, against 105 ms when focus and
+// select were separate rex calls.
 func (c *Client) Show(p Pane) error {
-	if _, err := c.run(nil, on(p.Host, "focus", "-s", p.Session, p.Block)...); err != nil {
+	c.mu.Lock()
+	app := c.App
+	c.mu.Unlock()
+	args, err := json.Marshal(map[string]string{"app": app, "host": p.Host, "session": p.Session, "window": p.Window, "block": p.Block})
+	if err != nil {
 		return err
 	}
-	return c.performOn(p.Host, "session.select", map[string]string{"session_id": p.Session, "window_id": p.Window})
+	_, err = c.run(slices.Concat(sharedLua, showLua), "do", "-", "--args", string(args))
+	return err
 }
 
 // Zoom sets a block's zoom.

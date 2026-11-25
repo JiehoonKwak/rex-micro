@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -103,9 +104,6 @@ type hosts struct {
 	listings int
 	m1, down int // stream attempts
 	release  chan struct{}
-	// reconnected: this Mac's app has new client IDs here and on M1, as after
-	// it reconnects with the servers up; its old connection lingers on M1.
-	reconnected bool
 }
 
 func (h *hosts) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
@@ -124,19 +122,7 @@ func (h *hosts) Run(_ context.Context, _ []byte, args ...string) ([]byte, error)
 		}
 		return []byte(`{"hosts":[{"host":{"label":"M1"}},{"host":{"label":"DOWN"}},{"host":{"label":"NEW"}}]}`), nil
 	case "client ls --json":
-		if h.reconnected {
-			return []byte(`{"clients":[{"client_id":"app2","info":{"kind":"app","label":"M3"},"principal":{"transport":"unix"}}]}`), nil
-		}
 		return []byte(`{"clients":[{"client_id":"app","info":{"kind":"app","label":"M3"},"principal":{"transport":"unix"}}]}`), nil
-	case "-S M1 client ls --json":
-		// M1's own app, a connection this Mac's app left behind, and its current one.
-		list := `{"client_id":"m1-app","info":{"kind":"app","label":"M1"},"principal":{"transport":"unix"},"connected_at":"2026-11-25T09:00:00Z"},
-			{"client_id":"m3-old","info":{"kind":"app","label":"M3"},"principal":{"transport":"tcp"},"connected_at":"2026-11-25T08:00:00Z"},
-			{"client_id":"m3-on-m1","info":{"kind":"app","label":"M3"},"principal":{"transport":"tcp"},"connected_at":"2026-11-25T08:30:00Z"}`
-		if h.reconnected {
-			list += `,{"client_id":"m3-on-m1-new","info":{"kind":"app","label":"M3"},"principal":{"transport":"tcp"},"connected_at":"2026-11-25T10:00:00Z"}`
-		}
-		return []byte(`{"clients":[` + list + `]}`), nil
 	}
 	return nil, nil
 }
@@ -184,18 +170,10 @@ func (h *hosts) Stream(ctx context.Context, stdin []byte, line func([]byte), arg
 	return fmt.Errorf("unexpected stream %v", args)
 }
 
-func (h *hosts) has(want string) bool { return h.index(want) >= 0 }
-
-// index is the position of the last call equal to want, -1 if none.
-func (h *hosts) index(want string) int {
+func (h *hosts) has(want string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	for i := len(h.calls) - 1; i >= 0; i-- {
-		if h.calls[i] == want {
-			return i
-		}
-	}
-	return -1
+	return slices.Contains(h.calls, want)
 }
 
 // Agents on every Rex host reach the keys, as in the Rex sidebar: hosts are
@@ -240,30 +218,13 @@ func TestWatchFollowsEveryHost(t *testing.T) {
 		t.Fatalf("Current = %+v, want the M1 pane the app sized last", cur)
 	}
 
-	// The app finds a session only on the server that relays the select, so
-	// a host's pane is selected through that host, as this app's client
-	// there; focus first, or the app leaves the old pane on screen.
-	if err := c.Show(m1); err != nil {
-		t.Fatal(err)
+	// A pane is shown by one local rex process, which reaches the pane's
+	// host itself (show.lua).
+	if err := c.Show(m1); err != nil || !h.has(`do - --args {"app":"","block":"r1","host":"M1","session":"rs1","window":"rw1"}`) {
+		t.Fatalf("show m1: %v, calls = %v", err, h.calls)
 	}
-	focus, sel := h.index("-S M1 focus -s rs1 r1"), h.index("-S M1 -C m3-on-m1 do session.select session_id=rs1 window_id=rw1")
-	if focus < 0 || sel < focus || h.has("-C app do session.select session_id=rs1 window_id=rw1") {
-		t.Fatalf("show calls = %v", h.calls)
-	}
-	// The app reconnects while the servers stay up: the next press follows
-	// its new connection on M1, although the departed "app" is still cached
-	// as this Mac's app and the old connection lingers on M1.
-	if _, err := c.AppClient(); err != nil {
-		t.Fatal(err)
-	}
-	h.mu.Lock()
-	h.reconnected = true
-	h.mu.Unlock()
-	if err := c.Show(m1); err != nil || !h.has("-S M1 -C m3-on-m1-new do session.select session_id=rs1 window_id=rw1") {
-		t.Fatalf("show after reconnect: %v, calls = %v", err, h.calls)
-	}
-	if err := c.Show(local); err != nil || !h.has("-C app do session.select session_id=s1 window_id=w1") {
-		t.Fatalf("local show: %v, calls = %v", err, h.calls)
+	if err := c.Show(local); err != nil || !h.has(`do - --args {"app":"","block":"b1","host":"","session":"s1","window":"w1"}`) {
+		t.Fatalf("show local: %v, calls = %v", err, h.calls)
 	}
 	_ = c.SendKeys("r1", "y")
 	_ = c.SendText("r1", "go")
