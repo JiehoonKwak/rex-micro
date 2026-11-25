@@ -40,6 +40,23 @@ func TestExecRunnerNeverStartsAServer(t *testing.T) {
 	}
 }
 
+// Run in a Rex terminal (`rex-micro run`, `rex-micro edit`), rex-micro's rex
+// must not inherit that pane's scope: with it, rex finds no block in any
+// other session.
+func TestExecRunnerDropsThePaneScope(t *testing.T) {
+	fake := filepath.Join(t.TempDir(), "rex")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho \"block=$REX_BLOCK session=$REX_SESSION server=$REX_SERVER\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REX_BLOCK", "block:the-pane-rex-micro-ran-in")
+	t.Setenv("REX_SESSION", "session:from-a-pre-preview.23-terminal")
+	t.Setenv("REX_SERVER", "unix:///kept")
+	out, err := ExecRunner{CLI: &CLI{Fixed: fake}}.Run(context.Background(), nil, "zoom", "block:elsewhere", "--on")
+	if err != nil || strings.TrimSpace(string(out)) != "block= session= server=unix:///kept" {
+		t.Fatalf("%q %v", out, err)
+	}
+}
+
 type streamer struct {
 	stub
 	args  []string

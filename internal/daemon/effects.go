@@ -232,16 +232,15 @@ func (x executor) SendText(b, t string) error                     { return x.rex
 func (x executor) CLI(a []string) error                           { return x.rex.CLI(a...) }
 
 // shellBase is the daemon's environment without what describes something
-// else than this press: REX_SESSION and REX_BLOCK name the Rex pane the
-// daemon was started from (`rex-micro run` in a pane), which would scope a
-// binding's rex commands to that session, and inherited REX_MICRO_KEY,
-// _GESTURE, _LAYER and REX_MICRO_AGENT_* would stand in for a press with no
-// agent.
+// else than this press: the Rex pane the daemon was started from
+// (rex.Unscoped), and inherited REX_MICRO_KEY, _GESTURE, _LAYER and
+// REX_MICRO_AGENT_*, which would stand in for a press with no agent.
 func shellBase(environ []string) []string {
-	drop := []string{"REX_SESSION=", "REX_BLOCK=", "REX_MICRO_KEY=", "REX_MICRO_GESTURE=", "REX_MICRO_LAYER=", "REX_MICRO_AGENT_"}
-	out := make([]string, 0, len(environ))
+	drop := []string{"REX_MICRO_KEY=", "REX_MICRO_GESTURE=", "REX_MICRO_LAYER=", "REX_MICRO_AGENT_"}
+	unscoped := rex.Unscoped(environ)
+	out := make([]string, 0, len(unscoped))
 next:
-	for _, kv := range environ {
+	for _, kv := range unscoped {
 		for _, d := range drop {
 			if strings.HasPrefix(kv, d) {
 				continue next

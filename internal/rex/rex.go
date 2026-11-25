@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -31,14 +32,40 @@ type Runner interface {
 	Run(ctx context.Context, stdin []byte, args ...string) ([]byte, error)
 }
 
-// Command builds a rex invocation that never starts a Rex server: rex-micro
-// only reads and drives a Rex that is already running. Every rex call goes
+// Command builds a rex invocation that never starts a Rex server (rex-micro
+// only reads and drives a Rex that is already running) and that is not scoped
+// to the pane rex-micro was started in (see Unscoped). Every rex call goes
 // through it.
 func Command(ctx context.Context, path string, args ...string) *exec.Cmd {
 	if path == "" {
 		path = "rex"
 	}
-	return exec.CommandContext(ctx, path, append([]string{"--autostart=false"}, args...)...)
+	cmd := exec.CommandContext(ctx, path, append([]string{"--autostart=false"}, args...)...)
+	cmd.Env = Unscoped(os.Environ())
+	return cmd
+}
+
+// paneScope is what a Rex terminal sets to name its pane: REX_BLOCK, and
+// REX_SESSION in terminals started before Rex preview.23.
+var paneScope = []string{"REX_BLOCK=", "REX_SESSION="}
+
+// Unscoped returns environ without the Rex pane scope. rex scopes a command
+// that names no session to the session of that pane, so with it a block in
+// any other session is "not found". rex-micro names every target itself, and
+// what runs for a key press acts for the press, not for the pane rex-micro
+// happened to be started in (`rex-micro run` in a Rex terminal).
+func Unscoped(environ []string) []string {
+	out := make([]string, 0, len(environ))
+next:
+	for _, kv := range environ {
+		for _, d := range paneScope {
+			if strings.HasPrefix(kv, d) {
+				continue next
+			}
+		}
+		out = append(out, kv)
+	}
+	return out
 }
 
 // ExecRunner runs the rex that CLI names, through Command.
@@ -603,7 +630,7 @@ func (c *Client) watchOne(ctx context.Context, host, pref string, every time.Dur
 	for errors.Is(err, ErrNewCLI) && ctx.Err() == nil {
 		err = s.Stream(ctx, c.scriptFor(pref, every), func(line []byte) {
 			if len(line) == 0 || (line[0] != '[' && line[0] != '{') {
-				return // rex's "listening" banner
+				return // not a snapshot (rex prints its "listening" banner to stderr)
 			}
 			panes, err := parsePanes(line)
 			if err != nil {
@@ -755,7 +782,7 @@ func (c *Client) CLIPath() string {
 }
 
 // ServerVersion reports the version of the Rex server rex reaches, e.g.
-// 0.1.0-preview.21.
+// 0.1.0-preview.23.
 func (c *Client) ServerVersion() (string, error) {
 	out, err := c.run(nil, "server", "status", "--json")
 	if err != nil {
