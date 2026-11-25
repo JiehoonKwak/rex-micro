@@ -98,6 +98,10 @@ AG05 = { builtin = "agent.show" }
 	if !strings.Contains(page, `>Permission<`) || !strings.Contains(page, `class="host">BV<`) {
 		t.Error("an agent's state or host is missing")
 	}
+	// An Agent Key is lit in its light's color, and only while its light is on.
+	if !strings.Contains(page, `class="key agent state-blocked lit" style="--led:#F97316"`) || strings.Contains(page, `state-empty lit`) {
+		t.Error("Agent Keys are not lit as their lights are")
+	}
 	// On a layer above the base, the bindings it leaves to the base recede;
 	// Agent Keys, which show agents on every layer, do not.
 	if !regexp.MustCompile(`class="key action inherited"><div class="top"><span class="cap">APPROVE`).MatchString(page) ||

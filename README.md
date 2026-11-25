@@ -182,8 +182,8 @@ your config uses one, and `rex-micro doctor` checks it.
 
 ### Seeing the keys
 
-`{ builtin = "keys.show" }` puts the active layer's keys on screen, laid out
-like the pad, over every app and without taking focus. On a `hold` (the
+`{ builtin = "keys.show" }` puts the active layer's keys on screen, drawn as
+the pad looks in a dark room, over every app and without taking focus. On a `hold` (the
 default dial hold) they stay while the key is held; on a press, for five
 seconds or until the next pad input. Give a binding `label = "..."` to name it
 there and in the editor:
@@ -192,11 +192,12 @@ there and in the editor:
 ACT06 = { shortcut = "cmd+shift+z", label = "Focus mode" }
 ```
 
-An Agent Key shows its agent the way its light does: the state in the light's
-color (a blocked agent by what it waits for), the session, the host when it
-is not this Mac, and the status message Rex's Activity shows (else the app).
-On a layer above the first, the keys it leaves to the first layer fade, so its
-own bindings stand out.
+An Agent Key is lit in its light's color and shows its state (a blocked agent
+by what it waits for), the session, the host when it is not this Mac, and the
+status message Rex's Activity shows (else the app). The dial is drawn as a
+knob with its turns on either side, and the stick with its four directions
+around it. On a layer above the first, the layer's own bindings glow in its
+color and the keys it leaves to the first layer stay unlit.
 
 ### Layers on the pad
 

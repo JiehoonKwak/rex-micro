@@ -172,9 +172,12 @@ func showsAgent(b *config.KeyBinding) bool {
 	return any
 }
 
-// HTML renders the sheet as a whole page for the overlay window, laid out
-// like the pad. It follows the system's light or dark appearance. On a layer
-// other than the base, the keys it leaves to the base recede.
+// HTML renders the sheet as a whole page for the overlay window, drawn as
+// the pad looks in a dark room: Agent Keys lit in their light's color, the
+// dial as a knob and the stick with its four directions around it. The pad
+// is dark whatever the system appearance, as the hardware is. On a layer
+// other than the base, the layer's own bindings glow in its color and the
+// keys it leaves to the base stay unlit.
 func HTML(s Sheet) string {
 	var b strings.Builder
 	esc := html.EscapeString
@@ -192,63 +195,67 @@ func HTML(s Sheet) string {
 			action(&b, s, name, cls)
 			return
 		}
-		c := cls("key agent state-"+k.State, k)
+		c := "key agent state-" + k.State
+		style := ""
+		if k.Light != "" {
+			c += " lit"
+			style = fmt.Sprintf(` style="--led:%s"`, esc(k.Light))
+		}
 		if len(k.More) > 0 {
 			c += " gestures"
 		}
-		dot := `<span class="led off"></span>`
-		if k.Light != "" {
-			dot = fmt.Sprintf(`<span class="led" style="--led:%s"></span>`, esc(k.Light))
-		}
-		word := stateWord(k.State, k.Kind)
 		host := ""
 		if k.Host != "" {
 			host = `<span class="host">` + esc(k.Host) + `</span>`
 		}
-		fmt.Fprintf(&b, `<div class="%s" style="--led:%s"><div class="top">%s<span class="state">%s</span>%s<span class="slot">%d</span></div>`, c, esc(orDim(k.Light)), dot, esc(word), host, k.Slot)
+		fmt.Fprintf(&b, `<div class="%s"%s><div class="top"><span class="slot">%d</span><span class="state">%s</span>%s</div>`, cls(c, k), style, k.Slot, esc(stateWord(k.State, k.Kind)), host)
 		fmt.Fprintf(&b, `<div class="title">%s</div>`, esc(k.Main))
 		for _, m := range k.More {
 			fmt.Fprintf(&b, `<div class="more">%s</div>`, esc(m))
 		}
 		fmt.Fprintf(&b, `<div class="sub">%s</div></div>`, esc(k.Sub))
 	}
-	well := func(title string, names ...string) {
-		b.WriteString(`<div class="well">`)
-		fmt.Fprintf(&b, `<div class="cap">%s</div>`, esc(title))
-		for _, n := range names {
-			k := s.Keys[n]
-			glyph := strings.SplitN(k.Cap, " ", 2)[0]
-			fmt.Fprintf(&b, `<div class="%s"><span class="g">%s</span><span class="label">%s</span>%s</div>`, cls("row", k), esc(glyph), esc(k.Main), hint(k.Hint))
-		}
-		// Other gestures after every control's press, so that a crowded well
-		// fades these out rather than cutting a control.
-		b.WriteString(`<div class="extras">`)
+	// label is one control of the dial or stick: what it does, then the
+	// shortcut behind it.
+	label := func(c, name string) string {
+		k := s.Keys[name]
+		return fmt.Sprintf(`<div class="%s"><span class="label">%s</span>%s</div>`, cls(c, k), esc(k.Main), hint(k.Hint))
+	}
+	// extras are the dial's or stick's other gestures, under the control.
+	extras := func(names ...string) string {
+		var e strings.Builder
 		for _, n := range names {
 			k := s.Keys[n]
 			glyph := strings.SplitN(k.Cap, " ", 2)[0]
 			for _, m := range k.More {
-				fmt.Fprintf(&b, `<div class="%s"><span class="g">%s</span><span class="more">%s</span></div>`, cls("row extra", k), esc(glyph), esc(m))
+				fmt.Fprintf(&e, `<div class="%s">%s %s</div>`, cls("more", k), esc(glyph), esc(m))
 			}
 		}
-		b.WriteString(`</div></div>`)
+		if e.Len() == 0 {
+			return ""
+		}
+		return `<div class="extras">` + e.String() + `</div>`
 	}
 	when := ""
 	if s.When != "" {
 		when = `<span class="when">on while ` + esc(s.When) + `</span>`
 	}
-	fmt.Fprintf(&b, `<!doctype html><html><head><meta charset="utf-8"><style>%s</style></head><body style="--accent:%s"><div class="card"><div class="head"><div class="layers">`, css, esc(s.Color))
+	fmt.Fprintf(&b, `<!doctype html><html><head><meta charset="utf-8"><style>%s</style></head><body style="--accent:%s"><div class="card"><div class="head"><span class="leds">`, css, esc(s.Color))
 	for i, l := range s.Layers {
-		c := "layer"
+		c := "led-bar"
 		if i+1 == s.Index {
-			c += " active"
+			c += " on"
 		}
-		fmt.Fprintf(&b, `<span class="%s"><span class="dot" style="background:%s"></span><span class="lname">%s</span></span>`, c, esc(l.Color), esc(l.Name))
+		fmt.Fprintf(&b, `<i class="%s" style="--c:%s" title="%s"></i>`, c, esc(l.Color), esc(l.Name))
 	}
-	fmt.Fprintf(&b, `</div>%s</div><div class="grid">`, when)
-	well("Dial", "ENC_CC", "ENC_CLK", "ENC_CW")
+	fmt.Fprintf(&b, `</span><span class="layer">%s</span>%s</div><div class="grid">`, esc(s.Layer), when)
+	fmt.Fprintf(&b, `<div class="control dial"><div class="knob-row">%s<div class="knob">%s</div>%s</div>%s</div>`,
+		label("turn left", "ENC_CC"), label("press", "ENC_CLK"), label("turn right", "ENC_CW"), extras("ENC_CC", "ENC_CLK", "ENC_CW"))
 	agent("AG00")
 	agent("AG01")
-	well("Stick", "STICK_UP", "STICK_RIGHT", "STICK_DOWN", "STICK_LEFT")
+	fmt.Fprintf(&b, `<div class="control stick"><div class="compass">%s%s<div class="nub"></div>%s%s</div>%s</div>`,
+		label("dir n", "STICK_UP"), label("dir w", "STICK_LEFT"), label("dir e", "STICK_RIGHT"), label("dir s", "STICK_DOWN"),
+		extras("STICK_UP", "STICK_RIGHT", "STICK_DOWN", "STICK_LEFT"))
 	for _, n := range []string{"AG02", "AG03", "AG04", "AG05"} {
 		agent(n)
 	}
@@ -271,14 +278,10 @@ func action(b *strings.Builder, s Sheet, name string, cls func(string, Key) stri
 	if k.Own && s.Index > 1 {
 		c += " own"
 	}
-	h := ""
-	if k.Hint != "" {
-		h = `<span class="hint">` + esc(k.Hint) + `</span>`
-	}
 	if len(k.More) > 0 {
 		c += " gestures"
 	}
-	fmt.Fprintf(b, `<div class="%s"><div class="top"><span class="cap">%s</span>%s</div><div class="label">%s</div>`, cls(c, k), esc(k.Cap), h, esc(k.Main))
+	fmt.Fprintf(b, `<div class="%s"><div class="top"><span class="cap">%s</span>%s</div><div class="label">%s</div>`, cls(c, k), esc(k.Cap), hint(k.Hint), esc(k.Main))
 	for _, m := range k.More {
 		fmt.Fprintf(b, `<div class="more">%s</div>`, esc(m))
 	}
@@ -297,13 +300,6 @@ func stateWord(state, kind string) string {
 	return strings.ToUpper(state[:1]) + state[1:]
 }
 
-func orDim(color string) string {
-	if color == "" {
-		return "var(--dim)"
-	}
-	return color
-}
-
 func hint(h string) string {
 	if h == "" {
 		return ""
@@ -313,58 +309,72 @@ func hint(h string) string {
 
 const css = `
 :root {
-  --deck: #F2F3F5; --edge: #D8DCE2; --key: #FFFFFF; --line: #E0E3E9; --well: #E7E9EE;
-  --fg: #14171F; --dim: #5A6170; --cap: #7B8394; --mix: 0%;
-}
-@media (prefers-color-scheme: dark) {
-  :root { --deck: #16171A; --edge: #2C2E35; --key: #222429; --line: #32353E; --well: #111215;
-    --fg: #F3F4F6; --dim: #9CA3AF; --cap: #767E8D; }
+  --pad: #0E0F12; --edge: rgba(255,255,255,.08); --cap-bg: #1E2026; --hi: rgba(255,255,255,.07); --chip: rgba(255,255,255,.08);
+  --fg: #F2F3F5; --dim: #9097A3; --print: #7D8491; --faint: #5E6470;
 }
 * { box-sizing: border-box; margin: 0; }
 html, body { background: transparent; height: 100%; overflow: hidden; }
 body { font: 13px -apple-system, BlinkMacSystemFont, sans-serif; color: var(--fg); padding: 10px; -webkit-user-select: none; cursor: default; }
-.card { height: 100%; background: var(--deck); border-radius: 18px; padding: 14px 18px 18px; border: 1px solid var(--edge); box-shadow: 0 10px 40px rgba(0,0,0,.35); display: flex; flex-direction: column; gap: 12px; }
-.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 28px; }
-.layers { display: flex; align-items: center; gap: 14px; min-width: 0; overflow: hidden; }
-.layer { display: flex; align-items: center; gap: 7px; color: var(--dim); font-size: 14px; white-space: nowrap; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
-.layer .dot { flex: none; }
-.layer:not(.active) { min-width: 3.6em; }
-.lname { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.extras { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 3px; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 12px), transparent); }
-.layer .dot { width: 7px; height: 7px; border-radius: 50%; opacity: .7; }
-.layer.active { color: var(--fg); font-size: 18px; font-weight: 700; flex: 0 1 auto; min-width: 5em; }
-.layer.active .dot { width: 10px; height: 10px; opacity: 1; }
-.when { color: var(--dim); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
-.grid { flex: 1; display: grid; grid-template-columns: 1.22fr 1fr 1fr 1.22fr; grid-template-rows: 1.35fr 1.2fr 1fr 1fr; gap: 10px; min-height: 0; }
-.key { background: var(--key); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
-.well { background: var(--well); border-radius: 12px; padding: 10px 12px; overflow: hidden; display: flex; flex-direction: column; gap: 3px; min-width: 0; min-height: 0; }
-.row { flex: none; }
-.row.extra .g { visibility: hidden; }
+.card { height: 100%; background: var(--pad); border-radius: 22px; padding: 14px 18px 18px; border: 1px solid var(--edge); box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 14px 44px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 12px; }
+.head { display: flex; align-items: center; gap: 12px; height: 26px; min-width: 0; }
+.leds { display: flex; gap: 5px; flex: none; }
+.led-bar { width: 18px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.14); }
+.led-bar.on { background: var(--c); box-shadow: 0 0 10px var(--c); }
+.layer { font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.when { color: var(--dim); font-size: 13px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.grid { flex: 1; display: grid; grid-template-columns: 1.25fr 1fr 1fr 1.25fr; grid-template-rows: 1.3fr 1.15fr 1fr .85fr; gap: 10px; min-height: 0; }
+.key { background: var(--cap-bg); border-radius: 12px; padding: 9px 11px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  box-shadow: inset 0 1px 0 var(--hi), inset 0 -3px 0 rgba(0,0,0,.55); }
 .wide { grid-column: span 3; }
-.top { display: flex; align-items: center; gap: 7px; min-height: 16px; }
-.cap { font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--cap); flex: 1; }
-.well .cap { flex: none; margin-bottom: 4px; }
-.hint { color: var(--dim); font-size: 12.5px; font-weight: 500; white-space: nowrap; margin-left: auto; padding-left: 6px; }
-.action .label { margin-top: auto; font-size: 16px; font-weight: 600; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.more { color: var(--dim); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.gestures .label { -webkit-line-clamp: 1; }
-.row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.row .g { width: 14px; flex: none; text-align: center; color: var(--cap); font-size: 12px; }
-.row .label { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.row .hint { font-size: 11.5px; padding-left: 4px; }
-.led { width: 9px; height: 9px; border-radius: 50%; background: var(--led); flex: none; box-shadow: inset 0 0 0 1px rgba(127,127,127,.45); }
-.led.off { background: none; box-shadow: inset 0 0 0 1.5px var(--cap); }
-.state { font-size: 13px; font-weight: 600; color: var(--fg); color: color-mix(in srgb, var(--led) 78%, var(--fg)); flex: 1 0 auto; min-width: 3.5em; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.state-idle .state, .state-empty .state { color: var(--dim); font-weight: 500; }
-.agent .more { margin-top: 4px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.agent.gestures .title { -webkit-line-clamp: 1; }
-.slot { font-size: 12px; color: var(--cap); font-variant-numeric: tabular-nums; }
-.title { margin-top: 8px; font-size: 15px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.host { color: var(--dim); font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; max-width: 45%; }
-.slot { flex: none; }
-.sub { margin-top: auto; color: var(--dim); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.state-blocked, .state-error { border-color: var(--led); background: color-mix(in srgb, var(--led) 9%, var(--key)); border-color: color-mix(in srgb, var(--led) 40%, var(--line)); }
-.own { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--key)); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
-.inherited { opacity: .5; }
-.key.inherited { box-shadow: none; }
+.top { display: flex; align-items: center; gap: 7px; min-height: 16px; min-width: 0; }
+.cap { font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--print); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hint { font: 600 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--dim); background: var(--chip); border-radius: 5px; padding: 1px 6px; white-space: nowrap; flex: none; }
+.action .label { margin-top: auto; font-size: 16px; font-weight: 650; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.gestures .label, .agent.gestures .title { -webkit-line-clamp: 1; }
+.more { color: var(--dim); font-size: 12px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.action .more:first-of-type { margin-top: 3px; }
+
+/* Agent Keys, lit from below in their light's color; idle glows least. */
+.agent { --glow: 58%; }
+.agent.state-idle { --glow: 26%; }
+.agent.state-blocked, .agent.state-error { --glow: 70%; }
+.agent.lit { background: radial-gradient(120% 120% at 50% 112%, color-mix(in srgb, var(--led) var(--glow), transparent), color-mix(in srgb, var(--led) 16%, var(--cap-bg)) 72%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.13), inset 0 -3px 0 rgba(0,0,0,.55), 0 0 20px color-mix(in srgb, var(--led) calc(var(--glow) / 2), transparent); }
+.agent:not(.lit) { background: #17181D; box-shadow: inset 0 1px 0 rgba(255,255,255,.05); }
+.agent:not(.lit) .state { color: var(--faint); font-weight: 500; }
+.slot { font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: rgba(255,255,255,.62); flex: none; }
+.agent:not(.lit) .slot { color: var(--faint); }
+.state { font-size: 12.5px; font-weight: 750; flex: 1 1 auto; min-width: 3em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.host { font-size: 11.5px; font-weight: 650; color: rgba(255,255,255,.75); background: rgba(0,0,0,.28); border-radius: 5px; padding: 1px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 50%; }
+.title { margin-top: auto; font-size: 14.5px; font-weight: 650; line-height: 1.22; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sub { color: rgba(255,255,255,.66); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 1.2em; }
+.agent:not(.lit) .sub { color: var(--dim); }
+.agent .more { color: rgba(255,255,255,.7); }
+
+/* The dial and the stick, drawn as the controls they are. */
+.control { display: flex; flex-direction: column; justify-content: center; gap: 6px; min-width: 0; min-height: 0; overflow: hidden; }
+.control .label { font-size: 12.5px; font-weight: 650; line-height: 1.15; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.control .hint { font-size: 10.5px; padding: 0 5px; margin-top: 2px; display: inline-block; }
+.knob-row { display: grid; grid-template-columns: 1fr 70px 1fr; align-items: center; gap: 6px; min-width: 0; }
+.knob-row > div { min-width: 0; }
+.turn.right { text-align: right; }
+.turn::before { display: block; font: 600 10px ui-monospace, Menlo, monospace; color: var(--print); }
+.turn.left::before { content: "⟲"; } .turn.right::before { content: "⟳"; }
+.knob { width: 70px; height: 70px; border-radius: 50%; display: grid; place-items: center; text-align: center; padding: 8px;
+  background: repeating-conic-gradient(rgba(255,255,255,.07) 0 3deg, transparent 3deg 9deg), radial-gradient(circle at 40% 35%, #5A5F6A, #24262B 70%); box-shadow: 0 4px 10px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.2); }
+.knob .label { font-size: 11px; -webkit-line-clamp: 3; }
+.knob .hint { display: none; }
+.compass { display: grid; grid-template-columns: 1fr 30px 1fr; grid-template-rows: auto 30px auto; gap: 4px 6px; align-items: center; text-align: center; min-width: 0; }
+.compass > div { min-width: 0; }
+.dir.n { grid-column: 1 / -1; } .dir.s { grid-column: 1 / -1; grid-row: 3; }
+.dir.w { text-align: left; } .dir.e { text-align: right; }
+.nub { width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #60656F, #202227 75%); box-shadow: 0 3px 8px rgba(0,0,0,.6); }
+.extras { display: flex; flex-direction: column; gap: 2px; text-align: center; min-height: 0; overflow: hidden; }
+.extras .more { font-size: 11px; }
+
+/* A layer's own bindings glow in its color; what it leaves to the base is unlit. */
+.own { background: radial-gradient(130% 130% at 50% 120%, color-mix(in srgb, var(--accent) 42%, transparent), var(--cap-bg) 72%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.11), inset 0 -3px 0 rgba(0,0,0,.55), 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); }
+.inherited { opacity: .45; }
+.key.inherited { box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }
 `
