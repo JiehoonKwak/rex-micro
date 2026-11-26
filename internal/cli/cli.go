@@ -25,7 +25,7 @@ import (
 // Version is set at build time with -ldflags "-X .../cli.Version=v1.2.3".
 var Version = "dev"
 
-const usage = `rex-micro turns a Work Louder Codex Micro into a controller for Rex.
+const usage = `rex-micro turns a Work Louder Codex Micro or Creator Micro 2 into a controller for Rex.
 
 Usage:
   rex-micro <command> [arguments]

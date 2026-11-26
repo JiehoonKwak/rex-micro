@@ -2,8 +2,9 @@
 
 # rex-micro
 
-Use a [Work Louder Codex Micro](https://worklouder.cc) as a controller for the
-Rex terminal. It doesn't need the Work Louder Input app or ChatGPT.
+Use a [Work Louder Codex Micro](https://worklouder.cc) or **Creator Micro 2** as
+a controller for the Rex terminal. It doesn't need the Work Louder Input app
+or ChatGPT.
 
 - **Agent Keys follow your agents.** Each of the six keys tracks a pane
   running Claude Code, Codex or another agent, on this Mac or any Rex host it
@@ -52,10 +53,14 @@ first layer. If you remapped a key in Input, for example MIC to a dictation
 shortcut, that key keeps typing its shortcut, and `rex-micro test` lists it as
 handled by the device.
 
-Requirements: macOS 13 or later, the Rex app, and a Codex Micro connected by
-USB-C or Bluetooth. rex-micro runs the `rex` CLI of the Rex server that is
-running, so it always matches the server's version, even right after a Rex
-update; `REX_MICRO_REX=/path/to/rex` overrides that.
+Requirements: macOS 13 or later, the Rex app, and either a Codex Micro or a
+Creator Micro 2 connected by USB-C or Bluetooth. On Creator Micro 2, switch to
+the firmware-generated Codex/ChatGPT layer to send the vendor key events and
+show the six Agent Key lights. Keep `[pad] layers = "off"` unless you explicitly
+want rex-micro to replace the device keymap with synchronized layers.
+rex-micro runs the `rex` CLI of the Rex server that is running, so it always
+matches the server's version, even right after a Rex update;
+`REX_MICRO_REX=/path/to/rex` overrides that.
 
 <details>
 <summary>Without Homebrew</summary>

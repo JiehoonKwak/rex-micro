@@ -10,7 +10,7 @@ package hid
 #include <CoreFoundation/CoreFoundation.h>
 #include <stdint.h>
 
-extern void goHIDMatched(uintptr_t h, uintptr_t dev, int ble);
+extern void goHIDMatched(uintptr_t h, uintptr_t dev, int ble, int pid);
 extern void goHIDRemoved(uintptr_t h, uintptr_t dev);
 extern void goHIDReport(uintptr_t h, uintptr_t dev, uint8_t *data, long len);
 extern void goHIDOpened(uintptr_t h, int result);
@@ -21,8 +21,13 @@ static void onMatched(void *ctx, IOReturn result, void *sender, IOHIDDeviceRef d
 	if (t != NULL && CFGetTypeID(t) == CFStringGetTypeID()) {
 		ble = CFStringFind(t, CFSTR("Bluetooth"), 0).location != kCFNotFound;
 	}
+	int pid = 0;
+	CFTypeRef p = IOHIDDeviceGetProperty(dev, CFSTR(kIOHIDProductIDKey));
+	if (p != NULL && CFGetTypeID(p) == CFNumberGetTypeID()) {
+		CFNumberGetValue((CFNumberRef)p, kCFNumberIntType, &pid);
+	}
 	CFRetain(dev);
-	goHIDMatched((uintptr_t)ctx, (uintptr_t)dev, ble);
+	goHIDMatched((uintptr_t)ctx, (uintptr_t)dev, ble, pid);
 }
 
 static void onRemoved(void *ctx, IOReturn result, void *sender, IOHIDDeviceRef dev) {
@@ -41,6 +46,15 @@ static void setInt(CFMutableDictionaryRef d, CFStringRef key, int v) {
 	CFRelease(n);
 }
 
+static CFMutableDictionaryRef deviceMatch(int vid, int pid, int usagePage) {
+	CFMutableDictionaryRef m = CFDictionaryCreateMutable(kCFAllocatorDefault, 0,
+		&kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+	setInt(m, CFSTR(kIOHIDVendorIDKey), vid);
+	setInt(m, CFSTR(kIOHIDProductIDKey), pid);
+	setInt(m, CFSTR(kIOHIDPrimaryUsagePageKey), usagePage);
+	return m;
+}
+
 typedef struct {
 	IOHIDManagerRef mgr;
 	CFRunLoopRef loop;
@@ -48,16 +62,18 @@ typedef struct {
 
 // hidRun creates the manager, schedules it on this thread's run loop and runs
 // the loop until hidStop. It returns the IOHIDManagerOpen result if opening fails.
-static IOReturn hidRun(hidCtx *c, uintptr_t h, int vid, int pid) {
+static IOReturn hidRun(hidCtx *c, uintptr_t h, int vid, int codexPid, int creatorPid, int usagePage) {
 	c->loop = CFRunLoopGetCurrent();
 	CFRetain(c->loop);
 	c->mgr = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
-	CFMutableDictionaryRef m = CFDictionaryCreateMutable(kCFAllocatorDefault, 0,
-		&kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-	setInt(m, CFSTR(kIOHIDVendorIDKey), vid);
-	setInt(m, CFSTR(kIOHIDProductIDKey), pid);
-	IOHIDManagerSetDeviceMatching(c->mgr, m);
-	CFRelease(m);
+	CFMutableDictionaryRef codex = deviceMatch(vid, codexPid, usagePage);
+	CFMutableDictionaryRef creator = deviceMatch(vid, creatorPid, usagePage);
+	const void *matches[] = { codex, creator };
+	CFArrayRef matchList = CFArrayCreate(kCFAllocatorDefault, matches, 2, &kCFTypeArrayCallBacks);
+	IOHIDManagerSetDeviceMatchingMultiple(c->mgr, matchList);
+	CFRelease(matchList);
+	CFRelease(creator);
+	CFRelease(codex);
 	IOHIDManagerRegisterDeviceMatchingCallback(c->mgr, onMatched, (void *)h);
 	IOHIDManagerRegisterDeviceRemovalCallback(c->mgr, onRemoved, (void *)h);
 	IOHIDManagerRegisterInputReportCallback(c->mgr, onReport, (void *)h);
@@ -121,8 +137,9 @@ func CheckAccess() Access {
 func RequestAccess() bool { return C.hidRequestAccess() == 1 }
 
 type padRef struct {
-	ref uintptr
-	ble bool
+	ref       uintptr
+	ble       bool
+	productID int
 }
 
 type darwinDevice struct {
@@ -153,7 +170,7 @@ func Open() (Device, error) {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 		defer close(d.done)
-		C.hidRun(d.ctx, C.uintptr_t(d.handle), VendorID, ProductID)
+		C.hidRun(d.ctx, C.uintptr_t(d.handle), VendorID, CodexMicroProductID, CreatorMicro2ProductID, VendorUsagePage)
 	}()
 	if err := <-d.started; err != nil {
 		<-d.done
@@ -197,6 +214,7 @@ func (d *darwinDevice) Send(frame func(transport string) [][]byte) error {
 	d.mu.Unlock()
 	defer C.hidRelease(C.uintptr_t(cur.ref))
 	for _, report := range frame(transportOf(cur)) {
+		report = outputReport(cur.productID, report)
 		buf := C.CBytes(report)
 		r := C.hidWrite(C.uintptr_t(cur.ref), (*C.uint8_t)(buf), C.long(len(report)))
 		C.free(buf)
@@ -259,11 +277,11 @@ func goHIDOpened(h C.uintptr_t, result C.int) {
 }
 
 //export goHIDMatched
-func goHIDMatched(h C.uintptr_t, dev C.uintptr_t, ble C.int) {
+func goHIDMatched(h C.uintptr_t, dev C.uintptr_t, ble C.int, pid C.int) {
 	d := cgo.Handle(h).Value().(*darwinDevice)
 	d.mu.Lock()
 	before := transportOf(d.current)
-	d.pads = append(d.pads, padRef{ref: uintptr(dev), ble: ble != 0})
+	d.pads = append(d.pads, padRef{ref: uintptr(dev), ble: ble != 0, productID: int(pid)})
 	d.current = d.pick()
 	after := transportOf(d.current)
 	d.mu.Unlock()

@@ -84,14 +84,14 @@ func hardwareTest(args []string) error {
 	select {
 	case rep.Transport = <-connected:
 	case <-time.After(2 * time.Second):
-		return errors.New("no Codex Micro found; plug it in over USB")
+		return errors.New("no Codex Micro or Creator Micro 2 found; plug it in over USB")
 	}
 	st, err := pad.Status(2 * time.Second)
 	if err != nil {
 		return fmt.Errorf("pad found but did not answer: %w", err)
 	}
 	rep.Firmware = st.Version
-	fmt.Printf("Codex Micro over %s, firmware %s. The daemon is paused while this runs.\n\n", rep.Transport, st.Version)
+	fmt.Printf("Work Louder Micro over %s, firmware %s. The daemon is paused while this runs.\n\n", rep.Transport, st.Version)
 
 	old, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
@@ -426,7 +426,7 @@ func lights(args []string) error {
 	select {
 	case <-waitConnected(pad):
 	case <-time.After(2 * time.Second):
-		return errors.New("no Codex Micro found")
+		return errors.New("no Codex Micro or Creator Micro 2 found")
 	}
 	cfg, _ := config.Load(config.Path())
 	var dark [agents.Keys]protocol.Light
@@ -580,7 +580,7 @@ func rawRPC(msgs []string) error {
 	select {
 	case <-waitConnected(pad):
 	case <-time.After(2 * time.Second):
-		return errors.New("no Codex Micro found")
+		return errors.New("no Codex Micro or Creator Micro 2 found")
 	}
 	eol := os.Getenv("REX_MICRO_EOL")
 	for _, m := range msgs {

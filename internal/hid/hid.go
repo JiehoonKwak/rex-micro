@@ -1,4 +1,4 @@
-// Package hid opens the Codex Micro's vendor HID channel.
+// Package hid opens a supported Work Louder Micro's vendor HID channel.
 //
 // The pad exposes one IOHIDDevice per transport (USB, Bluetooth LE). Every key,
 // dial and joystick event, and every lighting command, travels over the
@@ -9,9 +9,11 @@ package hid
 import "errors"
 
 const (
-	VendorID  = 0x303A
-	ProductID = 0x8360
-	ReportID  = 6
+	VendorID               = 0x303A
+	CodexMicroProductID    = 0x8360
+	CreatorMicro2ProductID = 0x8298
+	VendorUsagePage        = 0xFF00
+	ReportID               = 6
 
 	TransportUSB = "USB"
 	TransportBLE = "Bluetooth Low Energy"
@@ -53,10 +55,10 @@ func (a Access) String() string {
 }
 
 // ErrUnsupported is returned on platforms without an implementation.
-var ErrUnsupported = errors.New("the Codex Micro vendor channel is only implemented on macOS")
+var ErrUnsupported = errors.New("the Work Louder Micro vendor channel is only implemented on macOS")
 
 // ErrNotConnected is returned by Write when no pad is open.
-var ErrNotConnected = errors.New("Codex Micro is not connected")
+var ErrNotConnected = errors.New("Work Louder Micro is not connected")
 
 // Device is an open, hot-pluggable connection to the pad.
 type Device interface {
@@ -69,4 +71,14 @@ type Device interface {
 	// Transport returns the transport of the open pad, or "" when none is open.
 	Transport() string
 	Close() error
+}
+
+// outputReport adapts the protocol frame to a device's USB report descriptor.
+// Creator Micro 2 includes the numbered report ID in the output buffer; Codex
+// Micro omits it over USB. BLE frames already start with the report ID.
+func outputReport(productID int, report []byte) []byte {
+	if productID == CreatorMicro2ProductID && (len(report) == 0 || report[0] != ReportID) {
+		return append([]byte{ReportID}, report...)
+	}
+	return report
 }

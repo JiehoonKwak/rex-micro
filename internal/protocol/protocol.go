@@ -1,4 +1,4 @@
-// Package protocol frames and parses the Codex Micro's vendor JSON-RPC channel.
+// Package protocol frames and parses the Work Louder Micro vendor JSON-RPC channel.
 //
 // Facts here follow FreeMicro's docs/PROTOCOL.md (MIT, verified on firmware
 // v0.4.1): messages are CRLF-terminated JSON split into reports of

@@ -1,4 +1,4 @@
-// Command rex-micro turns a Work Louder Codex Micro into a controller for Rex.
+// Command rex-micro turns a Work Louder Codex Micro or Creator Micro 2 into a controller for Rex.
 package main
 
 import (
