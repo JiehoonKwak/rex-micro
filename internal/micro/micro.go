@@ -1,4 +1,4 @@
-// Package micro talks JSON-RPC to a Codex Micro over a raw hid.Device.
+// Package micro talks JSON-RPC to a supported Work Louder Micro over a raw hid.Device.
 package micro
 
 import (

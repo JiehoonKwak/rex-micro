@@ -165,7 +165,7 @@ func doctor() int {
 			}
 		}
 		if !connected {
-			c.fail("pad", "no Codex Micro found over USB or Bluetooth")
+			c.fail("pad", "no Codex Micro or Creator Micro 2 found over USB or Bluetooth")
 		} else if s, err := pad.Status(2 * time.Second); err != nil {
 			c.fail("pad", "found over "+pad.Transport()+" but device.status got no reply: "+err.Error())
 		} else {
